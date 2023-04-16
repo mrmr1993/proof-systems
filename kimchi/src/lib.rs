@@ -17,6 +17,7 @@ pub mod curve;
 pub mod error;
 pub mod lagrange_basis_evaluations;
 pub mod linearization;
+pub mod mips;
 pub mod oracles;
 pub mod plonk_sponge;
 pub mod precomputed_srs;

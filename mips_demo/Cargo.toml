@@ -1,0 +1,18 @@
+[package]
+name = "mips_demo"
+version = "0.1.0"
+description = "MIPS demo"
+repository = "https://github.com/o1-labs/proof-systems"
+homepage = "https://o1-labs.github.io/proof-systems/"
+documentation = "https://o1-labs.github.io/proof-systems/rustdoc/"
+readme = "README.md"
+edition = "2021"
+license = "Apache-2.0"
+
+[dependencies]
+kimchi = { path = "../kimchi", version = "0.1.0" }
+poly-commitment = { path = "../poly-commitment", version = "0.1.0" }
+groupmap = { path = "../groupmap", version = "0.1.0" }
+mina-curves = { path = "../curves", version = "0.1.0" }
+mina-poseidon = { path = "../poseidon", version = "0.1.0" }
+elf = "0.7.2"

@@ -8,7 +8,7 @@ use crate::{
             index::LookupSelectors,
             lookups::{LookupPattern, LookupPatterns},
         },
-        polynomials::permutation::eval_vanishes_on_last_4_rows,
+        polynomials::permutation::{eval_vanishes_on_last_4_rows, eval_vanishes_on_last_row},
         wires::COLUMNS,
     },
     proof::PointEvaluations,
@@ -57,6 +57,7 @@ pub enum ExprError<Column> {
 }
 
 /// The collection of constants required to evaluate an `Expr`.
+#[derive(Clone)]
 pub struct Constants<F: 'static> {
     /// The challenge alpha from the PLONK IOP.
     pub alpha: F,
@@ -123,6 +124,7 @@ pub trait ColumnEnvironment<'a, F: FftField> {
     fn get_domain(&self, d: Domain) -> D<F>;
     fn get_constants(&self) -> &Constants<F>;
     fn vanishes_on_last_4_rows(&self) -> &'a Evaluations<F, D<F>>;
+    fn vanishes_on_last_row(&self) -> &'a Evaluations<F, D<F>>;
     fn l0_1(&self) -> F;
 }
 
@@ -165,6 +167,10 @@ impl<'a, F: FftField> ColumnEnvironment<'a, F> for Environment<'a, F> {
 
     fn vanishes_on_last_4_rows(&self) -> &'a Evaluations<F, D<F>> {
         &self.vanishes_on_last_4_rows
+    }
+
+    fn vanishes_on_last_row(&self) -> &'a Evaluations<F, D<F>> {
+        unimplemented!()
     }
 
     fn l0_1(&self) -> F {
@@ -430,6 +436,7 @@ pub enum Expr<C, Column> {
     Double(Box<Expr<C, Column>>),
     Square(Box<Expr<C, Column>>),
     BinOp(Op2, Box<Expr<C, Column>>, Box<Expr<C, Column>>),
+    VanishesOnLastRow,
     VanishesOnLast4Rows,
     /// UnnormalizedLagrangeBasis(i) is
     /// (x^n - 1) / (x - omega^i)
@@ -446,9 +453,11 @@ impl<C: Zero + One + Neg<Output = C> + PartialEq + Clone, Column: Clone + Partia
     fn apply_feature_flags_inner(&self, features: &FeatureFlags) -> (Expr<C, Column>, bool) {
         use Expr::*;
         match self {
-            Constant(_) | Cell(_) | VanishesOnLast4Rows | UnnormalizedLagrangeBasis(_) => {
-                (self.clone(), false)
-            }
+            Constant(_)
+            | Cell(_)
+            | VanishesOnLast4Rows
+            | VanishesOnLastRow
+            | UnnormalizedLagrangeBasis(_) => (self.clone(), false),
             Double(c) => {
                 let (c_reduced, reduce_further) = c.apply_feature_flags_inner(features);
                 if reduce_further && c_reduced.is_zero() {
@@ -603,6 +612,7 @@ pub enum PolishToken<F, Column> {
     Add,
     Mul,
     Sub,
+    VanishesOnLastRow,
     VanishesOnLast4Rows,
     UnnormalizedLagrangeBasis(i32),
     Store,
@@ -661,6 +671,7 @@ impl<F: FftField, Column: Copy> PolishToken<F, Column> {
                 EndoCoefficient => stack.push(c.endo_coefficient),
                 Mds { row, col } => stack.push(c.mds[*row][*col]),
                 VanishesOnLast4Rows => stack.push(eval_vanishes_on_last_4_rows(d, pt)),
+                VanishesOnLastRow => stack.push(eval_vanishes_on_last_row(d, pt)),
                 UnnormalizedLagrangeBasis(i) => {
                     stack.push(unnormalized_lagrange_basis(&d, *i, &pt))
                 }
@@ -733,12 +744,17 @@ impl<C, Column> Expr<C, Column> {
         Expr::Constant(c)
     }
 
+    pub fn cache(self, cache: &mut Cache) -> Self {
+        Expr::Cache(cache.next_id(), Box::new(self))
+    }
+
     fn degree(&self, d1_size: u64) -> u64 {
         use Expr::*;
         match self {
             Double(x) => x.degree(d1_size),
             Constant(_) => 0,
             VanishesOnLast4Rows => 4,
+            VanishesOnLastRow => 1,
             UnnormalizedLagrangeBasis(_) => d1_size,
             Cell(_) => d1_size,
             Square(x) => 2 * x.degree(d1_size),
@@ -750,15 +766,6 @@ impl<C, Column> Expr<C, Column> {
             Cache(_, e) => e.degree(d1_size),
             IfFeature(_, e1, e2) => std::cmp::max(e1.degree(d1_size), e2.degree(d1_size)),
         }
-    }
-}
-
-impl<F> fmt::Display for Expr<ConstantExpr<F>, berkeley_columns::Column>
-where
-    F: PrimeField,
-{
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.text_str())
     }
 }
 
@@ -1354,6 +1361,9 @@ impl<F: FftField, Column: Copy> Expr<ConstantExpr<F>, Column> {
             Expr::VanishesOnLast4Rows => {
                 res.push(PolishToken::VanishesOnLast4Rows);
             }
+            Expr::VanishesOnLastRow => {
+                res.push(PolishToken::VanishesOnLastRow);
+            }
             Expr::UnnormalizedLagrangeBasis(i) => {
                 res.push(PolishToken::UnnormalizedLagrangeBasis(*i));
             }
@@ -1424,6 +1434,7 @@ impl<F: FftField, Column: PartialEq + Copy + GenericColumn> Expr<ConstantExpr<F>
             Constant(x) => Constant(x.value(c)),
             Cell(v) => Cell(*v),
             VanishesOnLast4Rows => VanishesOnLast4Rows,
+            VanishesOnLastRow => VanishesOnLastRow,
             UnnormalizedLagrangeBasis(i) => UnnormalizedLagrangeBasis(*i),
             BinOp(Op2::Add, x, y) => x.evaluate_constants_(c) + y.evaluate_constants_(c),
             BinOp(Op2::Mul, x, y) => x.evaluate_constants_(c) * y.evaluate_constants_(c),
@@ -1482,6 +1493,7 @@ impl<F: FftField, Column: PartialEq + Copy + GenericColumn> Expr<ConstantExpr<F>
                 Ok(x - y)
             }
             VanishesOnLast4Rows => Ok(eval_vanishes_on_last_4_rows(d, pt)),
+            VanishesOnLastRow => Ok(eval_vanishes_on_last_row(d, pt)),
             UnnormalizedLagrangeBasis(i) => Ok(unnormalized_lagrange_basis(&d, *i, &pt)),
             Cell(v) => v.evaluate(evals),
             Cache(_, e) => e.evaluate_(d, pt, evals, c),
@@ -1547,6 +1559,7 @@ impl<F: FftField, Column: Copy + GenericColumn> Expr<F, Column> {
                 Ok(x - y)
             }
             VanishesOnLast4Rows => Ok(eval_vanishes_on_last_4_rows(d, pt)),
+            VanishesOnLastRow => Ok(eval_vanishes_on_last_row(d, pt)),
             UnnormalizedLagrangeBasis(i) => Ok(unnormalized_lagrange_basis(&d, *i, &pt)),
             Cell(v) => v.evaluate(evals),
             Cache(_, e) => e.evaluate(d, pt, evals),
@@ -1686,6 +1699,11 @@ impl<F: FftField, Column: Copy + GenericColumn> Expr<F, Column> {
                 domain: Domain::D8,
                 shift: 0,
                 evals: env.vanishes_on_last_4_rows(),
+            },
+            Expr::VanishesOnLastRow => EvalResult::SubEvals {
+                domain: Domain::D8,
+                shift: 0,
+                evals: env.vanishes_on_last_row(),
             },
             Expr::Constant(x) => EvalResult::Constant(*x),
             Expr::UnnormalizedLagrangeBasis(i) => EvalResult::Evals {
@@ -1900,6 +1918,7 @@ impl<F: Neg<Output = F> + Clone + One + Zero + PartialEq, Column: Ord + Copy + s
             Double(x) => x.is_constant(evaluated),
             BinOp(_, x, y) => x.is_constant(evaluated) && y.is_constant(evaluated),
             VanishesOnLast4Rows => true,
+            VanishesOnLastRow => true,
             UnnormalizedLagrangeBasis(_) => true,
             Cache(_, x) => x.is_constant(evaluated),
             IfFeature(_, e1, e2) => e1.is_constant(evaluated) && e2.is_constant(evaluated),
@@ -1946,6 +1965,7 @@ impl<F: Neg<Output = F> + Clone + One + Zero + PartialEq, Column: Ord + Copy + s
             Cache(_, e) => e.monomials(ev),
             UnnormalizedLagrangeBasis(i) => constant(UnnormalizedLagrangeBasis(*i)),
             VanishesOnLast4Rows => constant(VanishesOnLast4Rows),
+            VanishesOnLastRow => constant(VanishesOnLastRow),
             Constant(c) => constant(Constant(c.clone())),
             Cell(var) => sing(vec![*var], Constant(F::one())),
             BinOp(Op2::Add, e1, e2) => {
@@ -2365,9 +2385,23 @@ where
     }
 }
 
-impl<F> Expr<ConstantExpr<F>, berkeley_columns::Column>
+pub trait PrintableColumn: Debug {
+    fn latex(&self) -> String;
+    fn text(&self) -> String;
+}
+
+impl<Fp: PrimeField, Column: PrintableColumn + Clone> fmt::Display
+    for Expr<ConstantExpr<Fp>, Column>
+{
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(formatter, "{}", self.text_str())
+    }
+}
+
+impl<F, Column> Expr<ConstantExpr<F>, Column>
 where
     F: PrimeField,
+    Column: PrintableColumn + Clone,
 {
     /// Converts the expression in OCaml code
     pub fn ocaml_str(&self) -> String {
@@ -2392,17 +2426,18 @@ where
 
     /// Recursively print the expression,
     /// except for the cached expression that are stored in the `cache`.
-    fn ocaml(
-        &self,
-        cache: &mut HashMap<CacheId, Expr<ConstantExpr<F>, berkeley_columns::Column>>,
-    ) -> String {
+    fn ocaml(&self, cache: &mut HashMap<CacheId, Expr<ConstantExpr<F>, Column>>) -> String {
         use Expr::*;
         match self {
             Double(x) => format!("double({})", x.ocaml(cache)),
             Constant(x) => x.ocaml(),
-            Cell(v) => format!("cell({})", v.ocaml()),
+            Cell(v) => {
+                let ocaml = format!("var({:?}, {:?})", v.col, v.row);
+                format!("cell({})", ocaml)
+            }
             UnnormalizedLagrangeBasis(i) => format!("unnormalized_lagrange_basis({})", *i),
             VanishesOnLast4Rows => "vanishes_on_last_4_rows".to_string(),
+            VanishesOnLastRow => "vanishes_on_last_row".to_string(),
             BinOp(Op2::Add, x, y) => format!("({} + {})", x.ocaml(cache), y.ocaml(cache)),
             BinOp(Op2::Mul, x, y) => format!("({} * {})", x.ocaml(cache), y.ocaml(cache)),
             BinOp(Op2::Sub, x, y) => format!("({} - {})", x.ocaml(cache), y.ocaml(cache)),
@@ -2444,17 +2479,21 @@ where
         res
     }
 
-    fn latex(
-        &self,
-        cache: &mut HashMap<CacheId, Expr<ConstantExpr<F>, berkeley_columns::Column>>,
-    ) -> String {
+    fn latex(&self, cache: &mut HashMap<CacheId, Expr<ConstantExpr<F>, Column>>) -> String {
         use Expr::*;
         match self {
             Double(x) => format!("2 ({})", x.latex(cache)),
             Constant(x) => x.latex(),
-            Cell(v) => v.latex(),
+            Cell(v) => {
+                let col = v.col.latex();
+                match v.row {
+                    Curr => col,
+                    Next => format!("\\tilde{{{col}}}"),
+                }
+            }
             UnnormalizedLagrangeBasis(i) => format!("unnormalized\\_lagrange\\_basis({})", *i),
             VanishesOnLast4Rows => "vanishes\\_on\\_last\\_4\\_rows".to_string(),
+            VanishesOnLastRow => "vanishes\\_on\\_last\\_row".to_string(),
             BinOp(Op2::Add, x, y) => format!("({} + {})", x.latex(cache), y.latex(cache)),
             BinOp(Op2::Mul, x, y) => format!("({} \\cdot {})", x.latex(cache), y.latex(cache)),
             BinOp(Op2::Sub, x, y) => format!("({} - {})", x.latex(cache), y.latex(cache)),
@@ -2470,17 +2509,21 @@ where
 
     /// Recursively print the expression,
     /// except for the cached expression that are stored in the `cache`.
-    fn text(
-        &self,
-        cache: &mut HashMap<CacheId, Expr<ConstantExpr<F>, berkeley_columns::Column>>,
-    ) -> String {
+    fn text(&self, cache: &mut HashMap<CacheId, Expr<ConstantExpr<F>, Column>>) -> String {
         use Expr::*;
         match self {
             Double(x) => format!("double({})", x.text(cache)),
             Constant(x) => x.text(),
-            Cell(v) => v.text(),
+            Cell(v) => {
+                let col = v.col.text();
+                match v.row {
+                    Curr => format!("Curr({col})"),
+                    Next => format!("Next({col})"),
+                }
+            }
             UnnormalizedLagrangeBasis(i) => format!("unnormalized_lagrange_basis({})", *i),
             VanishesOnLast4Rows => "vanishes_on_last_4_rows".to_string(),
+            VanishesOnLastRow => "vanishes_on_last_row".to_string(),
             BinOp(Op2::Add, x, y) => format!("({} + {})", x.text(cache), y.text(cache)),
             BinOp(Op2::Mul, x, y) => format!("({} * {})", x.text(cache), y.text(cache)),
             BinOp(Op2::Sub, x, y) => format!("({} - {})", x.text(cache), y.text(cache)),

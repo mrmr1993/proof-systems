@@ -1,6 +1,6 @@
 use crate::{
     circuits::{
-        expr::{self, ColumnEvaluations, Domain, ExprError, GenericColumn},
+        expr::{self, ColumnEvaluations, Domain, ExprError, GenericColumn, PrintableColumn},
         gate::{CurrOrNext, GateType},
         lookup::lookups::LookupPattern,
     },
@@ -35,8 +35,8 @@ impl GenericColumn for Column {
     }
 }
 
-impl Column {
-    pub fn latex(&self) -> String {
+impl expr::PrintableColumn for Column {
+    fn latex(&self) -> String {
         match self {
             Column::Witness(i) => format!("w_{{{i}}}"),
             Column::Z => "Z".to_string(),
@@ -54,7 +54,7 @@ impl Column {
         }
     }
 
-    pub fn text(&self) -> String {
+    fn text(&self) -> String {
         match self {
             Column::Witness(i) => format!("w[{i}]"),
             Column::Z => "Z".to_string(),

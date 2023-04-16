@@ -86,6 +86,20 @@ pub fn vanishes_on_last_4_rows<F: FftField>(domain: D<F>) -> DensePolynomial<F> 
     &(&(&x - &c(w1)) * &(&x - &c(w2))) * &(&(&x - &c(w3)) * &(&x - &c(w4)))
 }
 
+pub fn eval_vanishes_on_last_row<F: FftField>(domain: D<F>, x: F) -> F {
+    let w1 = domain.group_gen.pow([domain.size - 1]);
+    x - w1
+}
+
+/// The polynomial
+/// (x - w^{n - 4}) (x - w^{n - 3}) * (x - w^{n - 2}) * (x - w^{n - 1})
+pub fn vanishes_on_last_row<F: FftField>(domain: D<F>) -> DensePolynomial<F> {
+    let x = DensePolynomial::from_coefficients_slice(&[F::zero(), F::one()]);
+    let c = |a: F| DensePolynomial::from_coefficients_slice(&[a]);
+    let w1 = domain.group_gen.pow([domain.size - 1]);
+    &x - &c(w1)
+}
+
 /// Returns the end of the circuit, which is used for introducing zero-knowledge in the permutation polynomial
 pub fn zk_w3<F: FftField>(domain: D<F>) -> F {
     domain.group_gen.pow([domain.size - (ZK_ROWS)])

@@ -154,6 +154,7 @@ pub fn prove(entrypoint: u32, initial_memory: Vec<(u32, Vec<u8>)>) {
 
     // Write initial memory to file
     {
+        println!("Writing initial memory to disk..");
         let path = "initial_memory";
         let file = OpenOptions::new()
             .write(true)
@@ -173,11 +174,12 @@ pub fn prove(entrypoint: u32, initial_memory: Vec<(u32, Vec<u8>)>) {
             w.write_all(initial_memory.as_slice()).unwrap();
             current_address += initial_memory.len();
         }
-        println!("Wrote initial memory to file {}", path);
+        println!("Wrote to {}", path);
     }
 
     // Write final memory to file
     {
+        println!("Writing final memory to disk..");
         let path = "final_memory";
         let file = OpenOptions::new()
             .write(true)
@@ -197,7 +199,7 @@ pub fn prove(entrypoint: u32, initial_memory: Vec<(u32, Vec<u8>)>) {
             w.write_all(initial_memory.as_slice()).unwrap();
             current_address += initial_memory.len();
         }
-        println!("Wrote final memory to file {}", path);
+        println!("Wrote to {}", path);
     }
 
     // add the proof to the batch
@@ -221,6 +223,7 @@ pub fn prove(entrypoint: u32, initial_memory: Vec<(u32, Vec<u8>)>) {
 
     // Write proof to file
     {
+        println!("Writing proof to disk..");
         let path = "proof";
         let file = OpenOptions::new()
             .write(true)
@@ -233,7 +236,7 @@ pub fn prove(entrypoint: u32, initial_memory: Vec<(u32, Vec<u8>)>) {
         serialized_proof
             .serialize(&mut rmp_serde::Serializer::new(w))
             .unwrap();
-        println!("Wrote proof to file {}", path);
+        println!("Wrote to {}", path);
     }
 
     // verify the proof (propagate any errors)

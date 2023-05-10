@@ -2,6 +2,11 @@ use elf::endian::AnyEndian;
 use elf::section::SectionHeader;
 use elf::ElfBytes;
 use kimchi::mips::instructions::decoding::decode_selector;
+use serde::ser::Serialize;
+use std::{
+    fs::OpenOptions,
+    io::{BufWriter, Write},
+};
 
 // TODOs:
 //   - program state
@@ -147,6 +152,54 @@ pub fn prove(entrypoint: u32, initial_memory: Vec<(u32, Vec<u8>)>) {
         start.elapsed().as_millis()
     );
 
+    // Write initial memory to file
+    {
+        let path = "initial_memory";
+        let file = OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .append(false)
+            .open(path)
+            .unwrap();
+        let mut w = BufWriter::new(file);
+        let mut current_address = 0usize;
+        for (addr, initial_memory) in witness.initial_memory.iter() {
+            let padding = (*addr as usize) - current_address;
+            if padding > 0 {
+                w.write_all(vec![0u8; padding].as_slice()).unwrap();
+                current_address += padding;
+            }
+            w.write_all(initial_memory.as_slice()).unwrap();
+            current_address += initial_memory.len();
+        }
+        println!("Wrote initial memory to file {}", path);
+    }
+
+    // Write final memory to file
+    {
+        let path = "final_memory";
+        let file = OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .append(false)
+            .open(path)
+            .unwrap();
+        let mut w = BufWriter::new(file);
+        let mut current_address = 0usize;
+        for (addr, initial_memory) in witness.final_memory.iter() {
+            let padding = (*addr as usize) - current_address;
+            if padding > 0 {
+                w.write_all(vec![0u8; padding].as_slice()).unwrap();
+                current_address += padding;
+            }
+            w.write_all(initial_memory.as_slice()).unwrap();
+            current_address += initial_memory.len();
+        }
+        println!("Wrote final memory to file {}", path);
+    }
+
     // add the proof to the batch
     let start = Instant::now();
 
@@ -160,9 +213,28 @@ pub fn prove(entrypoint: u32, initial_memory: Vec<(u32, Vec<u8>)>) {
         start.elapsed().as_millis()
     );
 
-    let serialized_proof = rmp_serde::to_vec(&proof.clone().to_serializable()).unwrap();
+    let serialized_proof = proof.clone().to_serializable();
 
-    println!("Proof size: {} bytes", serialized_proof.len());
+    let serialized_bytes = rmp_serde::to_vec(&serialized_proof).unwrap();
+
+    println!("Proof size: {} bytes", serialized_bytes.len());
+
+    // Write proof to file
+    {
+        let path = "proof";
+        let file = OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .append(false)
+            .open(path)
+            .unwrap();
+        let w = BufWriter::new(file);
+        serialized_proof
+            .serialize(&mut rmp_serde::Serializer::new(w))
+            .unwrap();
+        println!("Wrote proof to file {}", path);
+    }
 
     // verify the proof (propagate any errors)
     let start = Instant::now();

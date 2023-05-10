@@ -16,3 +16,6 @@ groupmap = { path = "../groupmap", version = "0.1.0" }
 mina-curves = { path = "../curves", version = "0.1.0" }
 mina-poseidon = { path = "../poseidon", version = "0.1.0" }
 elf = "0.7.2"
+rmp-serde = "1.1.1"
+serde = "1.0.130"
+serde_with = "1.10.0"

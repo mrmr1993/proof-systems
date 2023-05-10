@@ -154,13 +154,15 @@ pub fn prove(entrypoint: u32, initial_memory: Vec<(u32, Vec<u8>)>) {
 
     let proof =
         Proof::create::<BaseSponge, ScalarSponge>(&group_map, witness, &prover_index).unwrap();
+
     println!(
         "- time to create proof: {:?}ms",
         start.elapsed().as_millis()
     );
 
-    println!("Proof size: {}", 0);
-    // println!("Proof: {:?}", proof);
+    let serialized_proof = rmp_serde::to_vec(&proof.clone().to_serializable()).unwrap();
+
+    println!("Proof size: {} bytes", serialized_proof.len());
 
     // verify the proof (propagate any errors)
     let start = Instant::now();

@@ -5,6 +5,8 @@ use crate::circuits::{
 use ark_ff::FftField;
 use ark_poly::{Evaluations, Radix2EvaluationDomain as D};
 use core::ops::{Index, IndexMut};
+use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
 use strum::IntoEnumIterator;
 use strum_macros::{EnumCount, EnumIter};
 
@@ -193,7 +195,7 @@ impl<'a, F: FftField> ColumnEnvironment<'a, F> for ColumnsEnv<'a, F> {
     }
 }
 
-#[derive(Clone, Copy, Default, Debug)]
+#[derive(Clone, Copy, Default, Debug, Serialize, Deserialize)]
 pub struct FixedColumns<T> {
     pub counter: T,
     pub sparse_counter: T,
@@ -254,7 +256,7 @@ impl<A> FixedColumns<A> {
     }
 }
 
-#[derive(Clone, Copy, Default, Debug)]
+#[derive(Clone, Copy, Default, Debug, Serialize, Deserialize)]
 pub struct LookupCounters<T> {
     pub counter: T,
     pub sparse_counter: T,
@@ -315,7 +317,7 @@ impl<A> LookupCounters<A> {
     }
 }
 
-#[derive(Clone, Copy, Default, Debug)]
+#[derive(Clone, Copy, Default, Debug, Serialize, Deserialize)]
 pub struct InstructionSelectors<T> {
     pub r_type: RTypeInstructionSelectors<T>,
     pub j_type: JTypeInstructionSelectors<T>,
@@ -387,7 +389,7 @@ impl<A> InstructionSelectors<A> {
     }
 }
 
-#[derive(Clone, Copy, Default, Debug)]
+#[derive(Clone, Copy, Default, Debug, Serialize, Deserialize)]
 pub struct RTypeInstructionSelectors<T> {
     pub shift_left_logical: T,
     pub shift_right_logical: T,
@@ -679,7 +681,7 @@ impl<A> RTypeInstructionSelectors<A> {
     }
 }
 
-#[derive(Clone, Copy, Default, Debug)]
+#[derive(Clone, Copy, Default, Debug, Serialize, Deserialize)]
 pub struct JTypeInstructionSelectors<T> {
     pub jump: T,
     pub jump_and_link: T,
@@ -740,7 +742,7 @@ impl<A> JTypeInstructionSelectors<A> {
     }
 }
 
-#[derive(Clone, Copy, Default, Debug)]
+#[derive(Clone, Copy, Default, Debug, Serialize, Deserialize)]
 pub struct ITypeInstructionSelectors<T> {
     pub branch_eq: T,
     pub branch_neq: T,
@@ -998,7 +1000,7 @@ pub enum InstructionPart {
     Funct,
 }
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Default)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Default, Serialize, Deserialize)]
 pub struct InstructionParts<T> {
     pub op_code: T,
     pub rs: T,

@@ -569,10 +569,12 @@ pub fn constraints<F: Field + PrimeField>(
             if i % (1 << 0) != 0b1000 {
                 continue;
             }
+            /*
             println!("i = {}", i);
             for lookup_term in env.lookup_terms[i].iter() {
                 println!("{}", lookup_term);
             }
+            */
             // HERE IS FAILING ON THE FINAL ROW!!!!!!!!!!!!!!!!!!
             constraints.push(combine_lookups(
                 Column::LookupTerm(NUM_GLOBAL_LOOKUP_TERMS + i),

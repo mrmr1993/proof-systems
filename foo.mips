@@ -20,7 +20,6 @@ exit:
 
 other_test:
 	sub $t5, $t2, $t3	# Subtract
-    j foo
 	sw $t5, Z		#Store the answer in Z (declared at the bottom)  
 
 	# Run the print_string syscall which has code 4
@@ -32,6 +31,7 @@ other_test:
     j $a0
 	syscall
 
+.data
 value:	.word 12
 Z:	.word 0
 msg:    .asciiz "Hello World!\n"

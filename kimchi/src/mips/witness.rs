@@ -543,11 +543,11 @@ impl<Fp: Field> InstructionEnvironment for Env<Fp> {
 
     fn sign_extend(&mut self, value: &Self::Variable, output: Self::Column) -> Self::Variable {
         let extended_value = ((((*value as u16) as i16) as i32) as u32) as u64;
-        println!("Sign extended {:#0x} to {:#0x}", value, extended_value);
+        // println!("Sign extended {:#0x} to {:#0x}", value, extended_value);
         let diff = extended_value - *value;
         let sign_value = i32::abs(extended_value as i32);
-        println!("diff:{:#0x}", diff);
-        println!("sign_value:{:#0x}", sign_value);
+        // println!("diff:{:#0x}", diff);
+        // println!("sign_value:{:#0x}", sign_value);
         self.write_column_field(output, -Fp::from(sign_value as u64));
         extended_value
     }
@@ -589,10 +589,10 @@ impl<Fp: Field> Witness<Fp> {
         let initial_registers = Registers::default();
 
         let mut instruction_pointers = Vec::with_capacity(d1_size);
-        println!(
-            "initial instruction pointer: {:#0x}",
-            initial_instruction_pointer
-        );
+        // println!(
+        //     "initial instruction pointer: {:#0x}",
+        //     initial_instruction_pointer
+        // );
         instruction_pointers.push(initial_instruction_pointer);
 
         let rng = &mut StdRng::from_seed([0; 32]);
@@ -637,6 +637,7 @@ impl<Fp: Field> Witness<Fp> {
 
         halt.push(env.halt);
 
+        /*
         for (i, (_, rest)) in env.memory.iter().enumerate() {
             for (j, mem) in rest.iter().enumerate() {
                 if !mem.is_zero() {
@@ -644,6 +645,7 @@ impl<Fp: Field> Witness<Fp> {
                 }
             }
         }
+        */
 
         // NB: -1 here to stop the instruction outputs from wrapping back around to the first row.
         for i in 0..d1_size - 1 {
@@ -656,13 +658,6 @@ impl<Fp: Field> Witness<Fp> {
             // Read the memory for the instruction
             let (opcode, instruction) = instructions::decode_instruction(&mut env);
 
-            if i < 30 {
-                println!(
-                    "IP: {:#0x}, Opcode: {:?}, instruction: {:#0x}",
-                    env.instruction_pointer, opcode, instruction
-                );
-            }
-
             if env.instruction_pointer != instruction_pointer_old
                 && opcode
                     != Some(InstructionSelector::RType(
@@ -670,7 +665,7 @@ impl<Fp: Field> Witness<Fp> {
                     ))
             {
                 instruction_pointer_old = env.instruction_pointer;
-                println!("IP: {:?}, Opcode: {:?}", env.instruction_pointer, opcode);
+                // println!("IP: {:?}, Opcode: {:?}", env.instruction_pointer, opcode);
             }
 
             /*// Choose a random opcode
@@ -750,7 +745,7 @@ impl<Fp: Field> Witness<Fp> {
             .map(|x| x.iter().map(|x| x.len()).max().unwrap_or(0))
             .max()
             .unwrap();
-        println!("lookups_count: {}", lookups_count);
+        // println!("lookups_count: {}", lookups_count);
 
         // Finalize memory and registers
         let mut full_lookups = Vec::with_capacity(d1_size);
@@ -786,7 +781,7 @@ impl<Fp: Field> Witness<Fp> {
                             initial_registers,
                             final_registers,
                             final_registers_write_index,
-                            lookup_counters: env.lookup_counters.as_ref().map(|x| x[i].clone()),
+                            lookup_counters: env.lookup_counters.as_ref().map(|x| x[i]),
                             row_number: i,
                             lookups: vec![],
                         }
@@ -804,11 +799,15 @@ impl<Fp: Field> Witness<Fp> {
             full_lookups.push(lookups);
         }
 
-        println!("instruction pointer: {:#0x}", initial_instruction_pointer);
+        println!(
+            "initial instruction pointer: {:#0x}",
+            initial_instruction_pointer
+        );
+        println!("final instruction pointer: {:#0x}", env.instruction_pointer);
         println!("halted: {:?}", halt[d1_size - 1]);
         println!("initial_registers: {:?}", initial_registers);
         println!("final_registers: {:?}", env.registers);
-        println!("register updates: {:?}", env.registers_write_index);
+        // println!("register updates: {:?}", env.registers_write_index);
 
         Witness {
             instruction_parts,

@@ -3,9 +3,18 @@ use elf::section::SectionHeader;
 use elf::ElfBytes;
 use kimchi::mips::instructions::decoding::decode_selector;
 
+// TODOs:
+//   - program state
+//     - dump initial and final memory to files
+//     - dump initial and final registers to files
+//   - dump proof to file, print size
+//   - tool to check memory commitments in proof
+//      - in demo, modify the output, show that the program now fails
+
 // To generate input:
-// mips-linux-gnu-as foo.mips -o foo.bin
-// mips-linux-gnu-ld foo.bin -o foo
+// mips-elf-as foo.mips -o foo.bin
+// mips-elf-ld foo.bin -o foo
+// mips-elf-objdump -s foo
 //
 // To run:
 // cargo run --release --bin mips_demo -- foo
@@ -27,9 +36,6 @@ pub fn main() {
         .expect("section table should be parseable")
         .expect("file should have a .text section");
 
-    println!("{:?}", text_header);
-    println!("{:#0x}", text_header.sh_addr);
-
     let (code, compression_header) = file
         .section_data(&text_header)
         .expect("Should be able to get note section data");
@@ -47,9 +53,6 @@ pub fn main() {
         .expect("section table should be parseable")
         .expect("file should have a .data section");
 
-    println!("{:?}", data_header);
-    println!("{:#0x}", data_header.sh_addr);
-
     let (data, compression_header) = file
         .section_data(&data_header)
         .expect("Should be able to get note section data");
@@ -61,6 +64,7 @@ pub fn main() {
         (data).iter().map(|x| *x).collect(),
     ));
 
+    /*
     for (i, word) in code.chunks(4).enumerate() {
         println!("{:?}", word);
         let mut acc = 0u32;
@@ -90,6 +94,7 @@ pub fn main() {
     for byte in data.iter() {
         println!("{:#0x}: {}", byte, *byte as char);
     }
+    */
 
     prove(memory[0].0 as u32, memory);
 }
@@ -128,8 +133,8 @@ pub fn prove(entrypoint: u32, initial_memory: Vec<(u32, Vec<u8>)>) {
         initial_memory.iter().map(|(offset, _)| *offset).collect(),
     );
     println!(
-        "- time to create prover index: {:?}s",
-        start.elapsed().as_secs()
+        "- time to create prover index: {:?}ms",
+        start.elapsed().as_millis()
     );
 
     // generate the witness
@@ -138,8 +143,8 @@ pub fn prove(entrypoint: u32, initial_memory: Vec<(u32, Vec<u8>)>) {
     let witness = Witness::create(domain_size, entrypoint, initial_memory);
 
     println!(
-        "- time to create execution trace: {:?}s",
-        start.elapsed().as_secs()
+        "- time to create execution trace: {:?}ms",
+        start.elapsed().as_millis()
     );
 
     // add the proof to the batch
@@ -149,9 +154,13 @@ pub fn prove(entrypoint: u32, initial_memory: Vec<(u32, Vec<u8>)>) {
 
     let proof =
         Proof::create::<BaseSponge, ScalarSponge>(&group_map, witness, &prover_index).unwrap();
-    println!("- time to create proof: {:?}s", start.elapsed().as_secs());
+    println!(
+        "- time to create proof: {:?}ms",
+        start.elapsed().as_millis()
+    );
 
-    println!("Proof: {:?}", proof);
+    println!("Proof size: {}", 0);
+    // println!("Proof: {:?}", proof);
 
     // verify the proof (propagate any errors)
     let start = Instant::now();

@@ -406,17 +406,21 @@ where
         )
     };
     let may_read = memory_accessible;
+    /*
     if !may_read.is_zero() {
         println!("may_read: {:?}", may_read);
     }
+    */
     //let may_read = memory_accessible * (Env::constant(1u32) - env.halted());
     let instruction = array::from_fn(|i| env.fetch_memory_checked(&memory_addrs[i], &may_read));
 
     let instruction = {
         let [i0, i1, i2, i3] = instruction;
+        /*
         if !may_read.is_zero() {
             println!("instr: {:?} {:?} {:?} {:?}", i0, i1, i2, i3);
         }
+        */
         (Env::constant(1u32 << 24) * i0)
             + (Env::constant(1u32 << 16) * i1)
             + (Env::constant(1u32 << 8) * i2)
@@ -676,9 +680,9 @@ pub fn run_instruction<Env: InstructionEnvironment>(
                 env.sign_extend(&imm, offset_output)
             };
             let ip = env.instruction_pointer();
-            println!("imm: {:?}", imm);
-            println!("offset: {:?}", offset);
-            println!("equal: {:?}", equal);
+            // println!("imm: {:?}", imm);
+            // println!("offset: {:?}", offset);
+            // println!("equal: {:?}", equal);
             env.set_instruction_pointer(
                 &(ip + Env::constant(4) + (Env::constant(1) - equal) * offset * Env::constant(4)),
             );

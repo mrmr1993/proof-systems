@@ -33,8 +33,6 @@ pub fn main() {
     let slice = file_data.as_slice();
     let file = ElfBytes::<AnyEndian>::minimal_parse(slice).expect("Could not parse file.");
 
-    let mut memory = vec![];
-
     // Get the ELF file's code
     let text_header: SectionHeader = file
         .section_header_by_name(".text")
@@ -47,10 +45,10 @@ pub fn main() {
     if let Some(compression_header) = compression_header {
         panic!("{:?}", compression_header);
     }
-    memory.push((
+    let initial_program_memory = (
         text_header.sh_addr as u32,
         (code).iter().map(|x| *x).collect(),
-    ));
+    );
 
     // Get the ELF file's data
     let data_header: SectionHeader = file
@@ -64,10 +62,10 @@ pub fn main() {
     if let Some(compression_header) = compression_header {
         panic!("{:?}", compression_header);
     }
-    memory.push((
+    let initial_data_memory = (
         data_header.sh_addr as u32,
         (data).iter().map(|x| *x).collect(),
-    ));
+    );
 
     /*
     for (i, word) in code.chunks(4).enumerate() {
@@ -101,7 +99,11 @@ pub fn main() {
     }
     */
 
-    prove(memory[0].0 as u32, memory);
+    prove(
+        initial_program_memory.0,
+        initial_program_memory,
+        initial_data_memory,
+    );
 }
 
 use groupmap::GroupMap;
@@ -122,7 +124,11 @@ type ScalarSponge = DefaultFrSponge<Fp, SpongeParams>;
 type G = Vesta;
 type F = Fp;
 
-pub fn prove(entrypoint: u32, initial_memory: Vec<(u32, Vec<u8>)>) {
+pub fn prove(
+    entrypoint: u32,
+    initial_program_memory: (u32, Vec<u8>),
+    initial_data_memory: (u32, Vec<u8>),
+) {
     let start = Instant::now();
 
     let domain_size = 1 << 16;
@@ -135,7 +141,7 @@ pub fn prove(entrypoint: u32, initial_memory: Vec<(u32, Vec<u8>)>) {
     let prover_index = ProverIndex::create(
         srs,
         domain,
-        initial_memory.iter().map(|(offset, _)| *offset).collect(),
+        vec![initial_program_memory.0, initial_data_memory.0],
     );
     println!(
         "- time to create prover index: {:?}ms",
@@ -145,7 +151,12 @@ pub fn prove(entrypoint: u32, initial_memory: Vec<(u32, Vec<u8>)>) {
     // generate the witness
     let start = Instant::now();
 
-    let witness = Witness::create(domain_size, entrypoint, initial_memory);
+    let witness = Witness::create(
+        domain_size,
+        entrypoint,
+        initial_program_memory,
+        initial_data_memory,
+    );
 
     println!(
         "- time to create execution trace: {:?}ms",

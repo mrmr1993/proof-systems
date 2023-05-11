@@ -50,7 +50,12 @@ fn test_mips() {
     for (i, value) in data.into_iter().enumerate() {
         initial_memory[i] = value;
     }
-    let witness = Witness::create(domain_size, 0u32, vec![(0u32, initial_memory)]);
+    let witness = Witness::create(
+        domain_size,
+        0u32,
+        (0u32, initial_memory),
+        (0x400000u32, initial_memory),
+    );
 
     println!(
         "- time to create execution trace: {:?}s",

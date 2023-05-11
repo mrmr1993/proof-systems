@@ -573,8 +573,11 @@ impl<Fp: Field> Witness<Fp> {
     pub fn create(
         d1_size: usize,
         initial_instruction_pointer: u32,
-        mut initial_memory: Vec<(u32, Vec<u8>)>,
+        initial_program_memory: (u32, Vec<u8>),
+        initial_data_memory: (u32, Vec<u8>),
     ) -> Self {
+        let mut initial_memory = vec![initial_program_memory, initial_data_memory];
+
         // Pad memory to d1_size with 0s
         for (_address, initial_memory) in initial_memory.iter_mut() {
             initial_memory.extend((0..(d1_size - initial_memory.len())).map(|_| 0u8));

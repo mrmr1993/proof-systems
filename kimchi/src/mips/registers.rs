@@ -1,8 +1,9 @@
+use serde::{Deserialize, Serialize};
 use std::ops::{Index, IndexMut};
 
 pub const NUM_REGISTERS: usize = 34;
 
-#[derive(Clone, Default, Debug)]
+#[derive(Clone, Default, Debug, Serialize, Deserialize)]
 pub struct Registers<T> {
     pub general_purpose: [T; 32],
     pub hi: T,

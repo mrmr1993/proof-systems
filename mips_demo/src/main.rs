@@ -189,6 +189,25 @@ pub fn prove(initial_program_memory: Vec<u8>, initial_data_memory: Vec<u8>) {
         println!("Done.");
     }
 
+    // Write initial program registers
+    {
+        let path = "initial_registers";
+        print!("Writing file {}.. ", path);
+        let file = OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .append(false)
+            .open(path)
+            .unwrap();
+        let w = BufWriter::new(file);
+        witness
+            .initial_registers
+            .serialize(&mut serde_json::Serializer::new(w))
+            .unwrap();
+        println!("Done.");
+    }
+
     // Write final program memory to file
     {
         let path = "final_program_memory";
@@ -220,6 +239,25 @@ pub fn prove(initial_program_memory: Vec<u8>, initial_data_memory: Vec<u8>) {
         let mut w = BufWriter::new(file);
         let (addr, final_memory) = &witness.final_memory[1];
         w.write_all(final_memory.as_slice()).unwrap();
+        println!("Done.");
+    }
+
+    // Write final program registers
+    {
+        let path = "final_registers";
+        print!("Writing file {}.. ", path);
+        let file = OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .append(false)
+            .open(path)
+            .unwrap();
+        let w = BufWriter::new(file);
+        witness
+            .final_registers
+            .serialize(&mut serde_json::Serializer::new(w))
+            .unwrap();
         println!("Done.");
     }
 

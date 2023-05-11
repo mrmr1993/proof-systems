@@ -172,10 +172,10 @@ pub fn prove(
         start.elapsed().as_millis()
     );
 
-    // Write initial memory to file
+    // Write initial program memory to file
     {
-        println!("Writing initial memory to disk..");
-        let path = "initial_memory";
+        let path = "initial_program_memory";
+        print!("Writing file {}.. ", path);
         let file = OpenOptions::new()
             .write(true)
             .create(true)
@@ -184,23 +184,16 @@ pub fn prove(
             .open(path)
             .unwrap();
         let mut w = BufWriter::new(file);
-        let mut current_address = 0usize;
-        for (addr, initial_memory) in witness.initial_memory.iter() {
-            let padding = (*addr as usize) - current_address;
-            if padding > 0 {
-                w.write_all(vec![0u8; padding].as_slice()).unwrap();
-                current_address += padding;
-            }
+        let (addr, initial_memory) = &witness.initial_memory[0]; {
             w.write_all(initial_memory.as_slice()).unwrap();
-            current_address += initial_memory.len();
         }
-        println!("Wrote to {}", path);
+        println!("Done.");
     }
 
-    // Write final memory to file
+    // Write initial data memory to file
     {
-        println!("Writing final memory to disk..");
-        let path = "final_memory";
+        let path = "initial_data_memory";
+        print!("Writing file {}.. ", path);
         let file = OpenOptions::new()
             .write(true)
             .create(true)
@@ -209,17 +202,46 @@ pub fn prove(
             .open(path)
             .unwrap();
         let mut w = BufWriter::new(file);
-        let mut current_address = 0usize;
-        for (addr, initial_memory) in witness.final_memory.iter() {
-            let padding = (*addr as usize) - current_address;
-            if padding > 0 {
-                w.write_all(vec![0u8; padding].as_slice()).unwrap();
-                current_address += padding;
-            }
+        let (addr, initial_memory) = &witness.initial_memory[1]; {
             w.write_all(initial_memory.as_slice()).unwrap();
-            current_address += initial_memory.len();
         }
-        println!("Wrote to {}", path);
+        println!("Done.");
+    }
+
+    // Write final program memory to file
+    {
+        let path = "final_program_memory";
+        print!("Writing file {}.. ", path);
+        let file = OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .append(false)
+            .open(path)
+            .unwrap();
+        let mut w = BufWriter::new(file);
+        let (addr, final_memory) = &witness.final_memory[0]; {
+            w.write_all(final_memory.as_slice()).unwrap();
+        }
+        println!("Done.");
+    }
+
+    // Write final data memory to file
+    {
+        let path = "final_data_memory";
+        print!("Writing file {}.. ", path);
+        let file = OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .append(false)
+            .open(path)
+            .unwrap();
+        let mut w = BufWriter::new(file);
+        let (addr, final_memory) = &witness.final_memory[1]; {
+            w.write_all(final_memory.as_slice()).unwrap();
+        }
+        println!("Done.");
     }
 
     // add the proof to the batch
@@ -243,8 +265,8 @@ pub fn prove(
 
     // Write proof to file
     {
-        println!("Writing proof to disk..");
         let path = "proof";
+        print!("Writing file {}.. ", path);
         let file = OpenOptions::new()
             .write(true)
             .create(true)
@@ -256,7 +278,7 @@ pub fn prove(
         serialized_proof
             .serialize(&mut rmp_serde::Serializer::new(w))
             .unwrap();
-        println!("Wrote to {}", path);
+        println!("Done");
     }
 
     // verify the proof (propagate any errors)

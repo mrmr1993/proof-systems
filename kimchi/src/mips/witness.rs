@@ -575,11 +575,14 @@ pub struct Witness<Fp> {
 impl<Fp: Field> Witness<Fp> {
     pub fn create(
         d1_size: usize,
-        initial_instruction_pointer: u32,
-        initial_program_memory: (u32, Vec<u8>),
-        initial_data_memory: (u32, Vec<u8>),
+        initial_program_memory: Vec<u8>,
+        initial_data_memory: Vec<u8>,
     ) -> Self {
-        let mut initial_memory = vec![initial_program_memory, initial_data_memory];
+        let initial_instruction_pointer: u32 = CODE_PAGE;
+        let mut initial_memory = vec![
+            (CODE_PAGE, initial_program_memory),
+            (DATA_PAGE, initial_data_memory),
+        ];
 
         // Pad memory to d1_size with 0s
         for (_address, initial_memory) in initial_memory.iter_mut() {

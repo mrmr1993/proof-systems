@@ -53,7 +53,7 @@ pub fn main() {
         let addr = text_header.sh_addr as u32;
         memory.extend((CODE_PAGE..addr).map(|_| 0u8));
         memory.extend(code.iter().map(|x| *x));
-        (CODE_PAGE, memory)
+        memory
     };
 
     // Get the ELF file's data
@@ -73,7 +73,7 @@ pub fn main() {
         let addr = data_header.sh_addr as u32;
         memory.extend((DATA_PAGE..addr).map(|_| 0u8));
         memory.extend(code.iter().map(|x| *x));
-        (DATA_PAGE, memory)
+        memory
     };
 
     /*
@@ -108,11 +108,7 @@ pub fn main() {
     }
     */
 
-    prove(
-        initial_program_memory.0,
-        initial_program_memory,
-        initial_data_memory,
-    );
+    prove(initial_program_memory, initial_data_memory);
 }
 
 use groupmap::GroupMap;
@@ -133,11 +129,7 @@ type ScalarSponge = DefaultFrSponge<Fp, SpongeParams>;
 type G = Vesta;
 type F = Fp;
 
-pub fn prove(
-    entrypoint: u32,
-    initial_program_memory: (u32, Vec<u8>),
-    initial_data_memory: (u32, Vec<u8>),
-) {
+pub fn prove(initial_program_memory: Vec<u8>, initial_data_memory: Vec<u8>) {
     let start = Instant::now();
 
     let domain_size = 1 << 16;
@@ -156,12 +148,7 @@ pub fn prove(
     // generate the witness
     let start = Instant::now();
 
-    let witness = Witness::create(
-        domain_size,
-        entrypoint,
-        initial_program_memory,
-        initial_data_memory,
-    );
+    let witness = Witness::create(domain_size, initial_program_memory, initial_data_memory);
 
     println!(
         "- time to create execution trace: {:?}ms",
@@ -181,7 +168,7 @@ pub fn prove(
             .unwrap();
         let mut w = BufWriter::new(file);
         let (addr, initial_memory) = &witness.initial_memory[0];
-            w.write_all(initial_memory.as_slice()).unwrap();
+        w.write_all(initial_memory.as_slice()).unwrap();
         println!("Done.");
     }
 
@@ -198,7 +185,7 @@ pub fn prove(
             .unwrap();
         let mut w = BufWriter::new(file);
         let (addr, initial_memory) = &witness.initial_memory[1];
-            w.write_all(initial_memory.as_slice()).unwrap();
+        w.write_all(initial_memory.as_slice()).unwrap();
         println!("Done.");
     }
 
@@ -215,7 +202,7 @@ pub fn prove(
             .unwrap();
         let mut w = BufWriter::new(file);
         let (addr, final_memory) = &witness.final_memory[0];
-            w.write_all(final_memory.as_slice()).unwrap();
+        w.write_all(final_memory.as_slice()).unwrap();
         println!("Done.");
     }
 
@@ -232,7 +219,7 @@ pub fn prove(
             .unwrap();
         let mut w = BufWriter::new(file);
         let (addr, final_memory) = &witness.final_memory[1];
-            w.write_all(final_memory.as_slice()).unwrap();
+        w.write_all(final_memory.as_slice()).unwrap();
         println!("Done.");
     }
 

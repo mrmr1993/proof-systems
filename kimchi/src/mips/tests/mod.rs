@@ -37,7 +37,7 @@ fn test_mips() {
     let start = Instant::now();
     let mut initial_memory = vec![0u8; domain_size];
 
-    let data = vec![
+    /*let data = vec![
         0x24, 0x0a, 0x00, 0x1a, 0x3c, 0x0b, 0x00, 0x00, 0x8d, 0x6b, 0x00, 0x08, 0x00, 0x00, 0x00,
         0x00, 0x01, 0x4b, 0x60, 0x20, 0x08, 0x00, 0x00, 0x05, 0x01, 0x4b, 0x68, 0x22, 0x3c, 0x01,
         0x00, 0x00, 0xac, 0x2d, 0x00, 0x0c, 0x24, 0x02, 0x00, 0x04, 0x3c, 0x04, 0x00, 0x00, 0x24,
@@ -47,13 +47,8 @@ fn test_mips() {
 
     for (i, value) in data.into_iter().enumerate() {
         initial_memory[i] = value;
-    }
-    let witness = Witness::create(
-        domain_size,
-        0u32,
-        (0u32, initial_memory),
-        (0x400000u32, vec![0u8; domain_size]),
-    );
+    }*/
+    let witness = Witness::create(domain_size, initial_memory, vec![0u8; domain_size]);
 
     println!(
         "- time to create execution trace: {:?}s",

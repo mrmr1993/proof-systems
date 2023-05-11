@@ -25,91 +25,98 @@ use std::{
 // mips-elf-ld foo.bin -o foo
 // mips-elf-objdump -s foo
 //
-// To run:
+// To create a proof and witness files:
 // cargo run --release --bin mips_demo -- foo
+//
+// To validate the proof against the witness files:
+// cargo run --release --bin mips_demo
 pub fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().collect();
-    let path = args
-        .get(1)
-        .expect("First argument should be a path to a MIPS ELF file.");
-    let path = std::path::PathBuf::from(path);
-    let file_data = std::fs::read(path).expect("Could not read file.");
-    let slice = file_data.as_slice();
-    let file = ElfBytes::<AnyEndian>::minimal_parse(slice).expect("Could not parse file.");
+    if args.len() > 1 {
+        let path = args
+            .get(1)
+            .expect("First argument should be a path to a MIPS ELF file.");
+        let path = std::path::PathBuf::from(path);
+        let file_data = std::fs::read(path).expect("Could not read file.");
+        let slice = file_data.as_slice();
+        let file = ElfBytes::<AnyEndian>::minimal_parse(slice).expect("Could not parse file.");
 
-    // Get the ELF file's code
-    let text_header: SectionHeader = file
-        .section_header_by_name(".text")
-        .expect("section table should be parseable")
-        .expect("file should have a .text section");
+        // Get the ELF file's code
+        let text_header: SectionHeader = file
+            .section_header_by_name(".text")
+            .expect("section table should be parseable")
+            .expect("file should have a .text section");
 
-    let (code, compression_header) = file
-        .section_data(&text_header)
-        .expect("Should be able to get note section data");
-    if let Some(compression_header) = compression_header {
-        panic!("{:?}", compression_header);
-    }
-    let initial_program_memory = {
-        let mut memory = Vec::with_capacity(1 << 16);
-        let addr = text_header.sh_addr as u32;
-        memory.extend((CODE_PAGE..addr).map(|_| 0u8));
-        memory.extend(code.iter().map(|x| *x));
-        memory
-    };
-
-    // Get the ELF file's data
-    let data_header: SectionHeader = file
-        .section_header_by_name(".data")
-        .expect("section table should be parseable")
-        .expect("file should have a .data section");
-
-    let (data, compression_header) = file
-        .section_data(&data_header)
-        .expect("Should be able to get note section data");
-    if let Some(compression_header) = compression_header {
-        panic!("{:?}", compression_header);
-    }
-    let initial_data_memory = {
-        let mut memory = Vec::with_capacity(1 << 16);
-        let addr = data_header.sh_addr as u32;
-        memory.extend((DATA_PAGE..addr).map(|_| 0u8));
-        memory.extend(code.iter().map(|x| *x));
-        memory
-    };
-
-    /*
-    for (i, word) in code.chunks(4).enumerate() {
-        println!("{:?}", word);
-        let mut acc = 0u32;
-        for chunk in word {
-            acc <<= 8;
-            acc |= *chunk as u32;
+        let (code, compression_header) = file
+            .section_data(&text_header)
+            .expect("Should be able to get note section data");
+        if let Some(compression_header) = compression_header {
+            panic!("{:?}", compression_header);
         }
-        println!("{:#0x}: {:#02b}", i * 4, acc);
-        let opcode = (acc >> 26) & ((1 << (32 - 26)) - 1);
-        let rs = (acc >> 21) & ((1 << (26 - 21)) - 1);
-        let rt = (acc >> 16) & ((1 << (21 - 16)) - 1);
-        let rd = (acc >> 11) & ((1 << (16 - 11)) - 1);
-        let shamt = (acc >> 6) & ((1 << (11 - 6)) - 1);
-        let funct = (acc >> 0) & ((1 << (6 - 0)) - 1);
-        let imm = (acc >> 0) & ((1 << (16 - 0)) - 1);
-        let address = (acc >> 0) & ((1 << (26 - 0)) - 1);
-        println!(
-            "opcode: {}, rs: {}, rt: {}, rd: {}, shamt: {}, funct: {}",
-            opcode, rs, rt, rd, shamt, funct
-        );
-        println!("opcode: {}, rs: {}, rt: {}, imm: {}", opcode, rs, rt, imm);
-        println!("opcode: {}, address: {}", opcode, address);
-        let selector = decode_selector((opcode, funct));
-        println!("selector: {:?}", selector);
-    }
+        let initial_program_memory = {
+            let mut memory = Vec::with_capacity(1 << 16);
+            let addr = text_header.sh_addr as u32;
+            memory.extend((CODE_PAGE..addr).map(|_| 0u8));
+            memory.extend(code.iter().map(|x| *x));
+            memory
+        };
 
-    for byte in data.iter() {
-        println!("{:#0x}: {}", byte, *byte as char);
-    }
-    */
+        // Get the ELF file's data
+        let data_header: SectionHeader = file
+            .section_header_by_name(".data")
+            .expect("section table should be parseable")
+            .expect("file should have a .data section");
 
-    prove(initial_program_memory, initial_data_memory)
+        let (data, compression_header) = file
+            .section_data(&data_header)
+            .expect("Should be able to get note section data");
+        if let Some(compression_header) = compression_header {
+            panic!("{:?}", compression_header);
+        }
+        let initial_data_memory = {
+            let mut memory = Vec::with_capacity(1 << 16);
+            let addr = data_header.sh_addr as u32;
+            memory.extend((DATA_PAGE..addr).map(|_| 0u8));
+            memory.extend(code.iter().map(|x| *x));
+            memory
+        };
+
+        /*
+        for (i, word) in code.chunks(4).enumerate() {
+            println!("{:?}", word);
+            let mut acc = 0u32;
+            for chunk in word {
+                acc <<= 8;
+                acc |= *chunk as u32;
+            }
+            println!("{:#0x}: {:#02b}", i * 4, acc);
+            let opcode = (acc >> 26) & ((1 << (32 - 26)) - 1);
+            let rs = (acc >> 21) & ((1 << (26 - 21)) - 1);
+            let rt = (acc >> 16) & ((1 << (21 - 16)) - 1);
+            let rd = (acc >> 11) & ((1 << (16 - 11)) - 1);
+            let shamt = (acc >> 6) & ((1 << (11 - 6)) - 1);
+            let funct = (acc >> 0) & ((1 << (6 - 0)) - 1);
+            let imm = (acc >> 0) & ((1 << (16 - 0)) - 1);
+            let address = (acc >> 0) & ((1 << (26 - 0)) - 1);
+            println!(
+                "opcode: {}, rs: {}, rt: {}, rd: {}, shamt: {}, funct: {}",
+                opcode, rs, rt, rd, shamt, funct
+            );
+            println!("opcode: {}, rs: {}, rt: {}, imm: {}", opcode, rs, rt, imm);
+            println!("opcode: {}, address: {}", opcode, address);
+            let selector = decode_selector((opcode, funct));
+            println!("selector: {:?}", selector);
+        }
+
+        for byte in data.iter() {
+            println!("{:#0x}: {}", byte, *byte as char);
+        }
+        */
+
+        prove(initial_program_memory, initial_data_memory)
+    } else {
+        verify_commitments()
+    }
 }
 
 use ark_ff::Zero;
@@ -313,7 +320,7 @@ pub fn prove(initial_program_memory: Vec<u8>, initial_data_memory: Vec<u8>) -> E
         .unwrap();
     println!("- time to verify: {}ms", start.elapsed().as_millis());
 
-    verify_commitments()
+    ExitCode::SUCCESS
 }
 
 pub fn commit_memory(srs: &SRS<G>, domain: Domain<F>, memory: Vec<u8>) -> PolyComm<G> {

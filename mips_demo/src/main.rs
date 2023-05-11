@@ -9,6 +9,7 @@ use serde::{de::Deserialize, ser::Serialize};
 use std::{
     fs::OpenOptions,
     io::{BufReader, BufWriter, Read, Write},
+    process::ExitCode,
 };
 
 // TODOs:
@@ -26,7 +27,7 @@ use std::{
 //
 // To run:
 // cargo run --release --bin mips_demo -- foo
-pub fn main() {
+pub fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().collect();
     let path = args
         .get(1)
@@ -108,7 +109,7 @@ pub fn main() {
     }
     */
 
-    prove(initial_program_memory, initial_data_memory);
+    prove(initial_program_memory, initial_data_memory)
 }
 
 use ark_ff::Zero;
@@ -136,7 +137,7 @@ type ScalarSponge = DefaultFrSponge<Fp, SpongeParams>;
 type G = Vesta;
 type F = Fp;
 
-pub fn prove(initial_program_memory: Vec<u8>, initial_data_memory: Vec<u8>) {
+pub fn prove(initial_program_memory: Vec<u8>, initial_data_memory: Vec<u8>) -> ExitCode {
     let start = Instant::now();
 
     let domain_size = 1 << 16;
@@ -312,7 +313,7 @@ pub fn prove(initial_program_memory: Vec<u8>, initial_data_memory: Vec<u8>) {
         .unwrap();
     println!("- time to verify: {}ms", start.elapsed().as_millis());
 
-    verify_commitments();
+    verify_commitments()
 }
 
 pub fn commit_memory(srs: &SRS<G>, domain: Domain<F>, memory: Vec<u8>) -> PolyComm<G> {
@@ -334,7 +335,23 @@ pub fn commit_registers(srs: &SRS<G>, domain: Domain<F>, registers: Registers<u3
     srs.commit_evaluations_non_hiding(domain, &evals)
 }
 
-pub fn verify_commitments() {
+pub fn verify_commitments() -> ExitCode {
+    let mut exit_code = ExitCode::SUCCESS;
+    let mut check_commitment = |msg, comm1: &PolyComm<G>, comm2: &PolyComm<G>| {
+        if comm1 == comm2 {
+            println!(
+                "Computed {} commitment matches the proof:\n{}",
+                msg, comm1.unshifted[0]
+            )
+        } else {
+            exit_code = ExitCode::FAILURE;
+            println!(
+                "Difference in {} commitments:\n{}\nvs\n{}",
+                msg, comm1.unshifted[0], comm2.unshifted[0]
+            )
+        }
+    };
+
     let start = Instant::now();
 
     let domain_size = 1 << 16;
@@ -373,9 +390,10 @@ pub fn verify_commitments() {
     // Check initial program memory
     {
         let comm = commit_memory(&srs, domain.d1, initial_program_memory);
-        println!(
-            "Comparing initial program memory commitments: {} =? {}",
-            comm.unshifted[0], proof.commitments.initial_memory[0].unshifted[0]
+        check_commitment(
+            "initial program memory",
+            &comm,
+            &proof.commitments.initial_memory[0],
         )
     };
 
@@ -393,9 +411,10 @@ pub fn verify_commitments() {
     // Check initial data memory
     {
         let comm = commit_memory(&srs, domain.d1, initial_data_memory);
-        println!(
-            "Comparing initial data memory commitments: {} =? {}",
-            comm.unshifted[0], proof.commitments.initial_memory[1].unshifted[0]
+        check_commitment(
+            "initial data memory",
+            &comm,
+            &proof.commitments.initial_memory[1],
         )
     };
 
@@ -414,9 +433,10 @@ pub fn verify_commitments() {
     // Check initial registers
     {
         let comm = commit_registers(&srs, domain.d1, initial_registers);
-        println!(
-            "Comparing initial regsiters commitments: {} =? {}",
-            comm.unshifted[0], proof.commitments.initial_registers.unshifted[0]
+        check_commitment(
+            "initial registers",
+            &comm,
+            &proof.commitments.initial_registers,
         )
     };
 
@@ -434,9 +454,10 @@ pub fn verify_commitments() {
     // Check final program memory
     {
         let comm = commit_memory(&srs, domain.d1, final_program_memory);
-        println!(
-            "Comparing final program memory commitments: {} =? {}",
-            comm.unshifted[0], proof.commitments.final_memory[0].unshifted[0]
+        check_commitment(
+            "final program memory",
+            &comm,
+            &proof.commitments.final_memory[0],
         )
     };
 
@@ -454,9 +475,10 @@ pub fn verify_commitments() {
     // Check final data memory
     {
         let comm = commit_memory(&srs, domain.d1, final_data_memory);
-        println!(
-            "Comparing final data memory commitments: {} =? {}",
-            comm.unshifted[0], proof.commitments.final_memory[1].unshifted[0]
+        check_commitment(
+            "final data memory",
+            &comm,
+            &proof.commitments.final_memory[1],
         )
     };
 
@@ -475,9 +497,8 @@ pub fn verify_commitments() {
     // Check final registers
     {
         let comm = commit_registers(&srs, domain.d1, final_registers);
-        println!(
-            "Comparing final regsiters commitments: {} =? {}",
-            comm.unshifted[0], proof.commitments.final_registers.unshifted[0]
-        )
+        check_commitment("final registers", &comm, &proof.commitments.final_registers)
     };
+
+    exit_code
 }

@@ -5,10 +5,10 @@ use kimchi::mips::{
     instructions::decoding::decode_selector,
     witness::{CODE_PAGE, DATA_PAGE},
 };
-use serde::ser::Serialize;
+use serde::{de::Deserialize, ser::Serialize};
 use std::{
     fs::OpenOptions,
-    io::{BufWriter, Write},
+    io::{BufReader, BufWriter, Read, Write},
 };
 
 // TODOs:
@@ -111,15 +111,22 @@ pub fn main() {
     prove(initial_program_memory, initial_data_memory);
 }
 
+use ark_ff::Zero;
+use ark_poly::{EvaluationDomain, Evaluations, Radix2EvaluationDomain as Domain};
 use groupmap::GroupMap;
 use kimchi::circuits::domains::EvaluationDomains;
-use kimchi::mips::{proof::Proof, prover_index::ProverIndex, witness::Witness};
+use kimchi::mips::{
+    proof::{Proof, SerializableProof},
+    prover_index::ProverIndex,
+    registers::Registers,
+    witness::Witness,
+};
 use mina_curves::pasta::{Fp, Vesta, VestaParameters};
 use mina_poseidon::{
     constants::PlonkSpongeConstantsKimchi,
     sponge::{DefaultFqSponge, DefaultFrSponge},
 };
-use poly_commitment::{commitment::CommitmentCurve, srs::SRS};
+use poly_commitment::{commitment::CommitmentCurve, srs::SRS, PolyComm};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -304,4 +311,173 @@ pub fn prove(initial_program_memory: Vec<u8>, initial_data_memory: Vec<u8>) {
         .verify::<BaseSponge, ScalarSponge>(&group_map, &prover_index.verifier_index())
         .unwrap();
     println!("- time to verify: {}ms", start.elapsed().as_millis());
+
+    verify_commitments();
+}
+
+pub fn commit_memory(srs: &SRS<G>, domain: Domain<F>, memory: Vec<u8>) -> PolyComm<G> {
+    let evals = memory
+        .into_iter()
+        .map(|x| F::from(x as u64))
+        .collect::<Vec<_>>();
+    let evals = Evaluations::<F, Domain<F>>::from_vec_and_domain(evals, domain);
+    srs.commit_evaluations_non_hiding(domain, &evals)
+}
+
+pub fn commit_registers(srs: &SRS<G>, domain: Domain<F>, registers: Registers<u32>) -> PolyComm<G> {
+    let mut evals = registers
+        .iter()
+        .map(|x| F::from(*x as u64))
+        .collect::<Vec<_>>();
+    evals.extend((evals.len()..domain.size()).map(|_| F::zero()));
+    let evals = Evaluations::<F, Domain<F>>::from_vec_and_domain(evals, domain);
+    srs.commit_evaluations_non_hiding(domain, &evals)
+}
+
+pub fn verify_commitments() {
+    let start = Instant::now();
+
+    let domain_size = 1 << 16;
+
+    let domain = EvaluationDomains::<F>::create(domain_size).unwrap();
+    let mut srs = SRS::<G>::create(domain.d1.size as usize);
+    srs.add_lagrange_basis(domain.d1);
+    println!(
+        "- time to create generate URS: {:?}ms",
+        start.elapsed().as_millis()
+    );
+
+    let proof = {
+        let path = "proof";
+        print!("Reading file {}.. ", path);
+        let file = OpenOptions::new().read(true).open(path).unwrap();
+        let r = BufReader::new(file);
+
+        let serialized_proof =
+            SerializableProof::<G>::deserialize(&mut rmp_serde::Deserializer::new(r)).unwrap();
+        println!("Done");
+        serialized_proof.to_proof()
+    };
+
+    // Reading initial program memory from file
+    let initial_program_memory = {
+        let path = "initial_program_memory";
+        print!("Reading file {}.. ", path);
+        let file = OpenOptions::new().read(true).open(path).unwrap();
+        let r = BufReader::new(file);
+        let initial_memory: Vec<u8> = r.bytes().map(Result::unwrap).collect();
+        println!("Done.");
+        initial_memory
+    };
+
+    // Check initial program memory
+    {
+        let comm = commit_memory(&srs, domain.d1, initial_program_memory);
+        println!(
+            "Comparing initial program memory commitments: {} =? {}",
+            comm.unshifted[0], proof.commitments.initial_memory[0].unshifted[0]
+        )
+    };
+
+    // Read initial data memory from file
+    let initial_data_memory = {
+        let path = "initial_data_memory";
+        print!("Reading file {}.. ", path);
+        let file = OpenOptions::new().read(true).open(path).unwrap();
+        let r = BufReader::new(file);
+        let initial_memory: Vec<u8> = r.bytes().map(Result::unwrap).collect();
+        println!("Done.");
+        initial_memory
+    };
+
+    // Check initial data memory
+    {
+        let comm = commit_memory(&srs, domain.d1, initial_data_memory);
+        println!(
+            "Comparing initial data memory commitments: {} =? {}",
+            comm.unshifted[0], proof.commitments.initial_memory[1].unshifted[0]
+        )
+    };
+
+    // Read initial registers
+    let initial_registers = {
+        let path = "initial_registers";
+        print!("Reading file {}.. ", path);
+        let file = OpenOptions::new().read(true).open(path).unwrap();
+        let r = BufReader::new(file);
+        let initial_registers =
+            Registers::<u32>::deserialize(&mut serde_json::Deserializer::from_reader(r)).unwrap();
+        println!("Done.");
+        initial_registers
+    };
+
+    // Check initial registers
+    {
+        let comm = commit_registers(&srs, domain.d1, initial_registers);
+        println!(
+            "Comparing initial regsiters commitments: {} =? {}",
+            comm.unshifted[0], proof.commitments.initial_registers.unshifted[0]
+        )
+    };
+
+    // Reading final program memory from file
+    let final_program_memory = {
+        let path = "final_program_memory";
+        print!("Reading file {}.. ", path);
+        let file = OpenOptions::new().read(true).open(path).unwrap();
+        let r = BufReader::new(file);
+        let final_memory: Vec<u8> = r.bytes().map(Result::unwrap).collect();
+        println!("Done.");
+        final_memory
+    };
+
+    // Check final program memory
+    {
+        let comm = commit_memory(&srs, domain.d1, final_program_memory);
+        println!(
+            "Comparing final program memory commitments: {} =? {}",
+            comm.unshifted[0], proof.commitments.final_memory[0].unshifted[0]
+        )
+    };
+
+    // Read final data memory from file
+    let final_data_memory = {
+        let path = "final_data_memory";
+        print!("Reading file {}.. ", path);
+        let file = OpenOptions::new().read(true).open(path).unwrap();
+        let r = BufReader::new(file);
+        let final_memory: Vec<u8> = r.bytes().map(Result::unwrap).collect();
+        println!("Done.");
+        final_memory
+    };
+
+    // Check final data memory
+    {
+        let comm = commit_memory(&srs, domain.d1, final_data_memory);
+        println!(
+            "Comparing final data memory commitments: {} =? {}",
+            comm.unshifted[0], proof.commitments.final_memory[1].unshifted[0]
+        )
+    };
+
+    // Read final registers
+    let final_registers = {
+        let path = "final_registers";
+        print!("Reading file {}.. ", path);
+        let file = OpenOptions::new().read(true).open(path).unwrap();
+        let r = BufReader::new(file);
+        let final_registers =
+            Registers::<u32>::deserialize(&mut serde_json::Deserializer::from_reader(r)).unwrap();
+        println!("Done.");
+        final_registers
+    };
+
+    // Check final registers
+    {
+        let comm = commit_registers(&srs, domain.d1, final_registers);
+        println!(
+            "Comparing final regsiters commitments: {} =? {}",
+            comm.unshifted[0], proof.commitments.final_registers.unshifted[0]
+        )
+    };
 }

@@ -17,6 +17,9 @@ use rand::{rngs::StdRng, Rng, SeedableRng};
 use std::array;
 use strum::IntoEnumIterator;
 
+pub const CODE_PAGE: u32 = 0x400000;
+pub const DATA_PAGE: u32 = 0x410000;
+
 #[derive(Clone, Debug)]
 pub struct Lookup<Fp> {
     pub numerator: Fp,

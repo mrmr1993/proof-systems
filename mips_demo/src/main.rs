@@ -1,7 +1,10 @@
 use elf::endian::AnyEndian;
 use elf::section::SectionHeader;
 use elf::ElfBytes;
-use kimchi::mips::instructions::decoding::decode_selector;
+use kimchi::mips::{
+    instructions::decoding::decode_selector,
+    witness::{CODE_PAGE, DATA_PAGE},
+};
 use serde::ser::Serialize;
 use std::{
     fs::OpenOptions,
@@ -45,10 +48,13 @@ pub fn main() {
     if let Some(compression_header) = compression_header {
         panic!("{:?}", compression_header);
     }
-    let initial_program_memory = (
-        text_header.sh_addr as u32,
-        (code).iter().map(|x| *x).collect(),
-    );
+    let initial_program_memory = {
+        let mut memory = Vec::with_capacity(1 << 16);
+        let addr = text_header.sh_addr as u32;
+        memory.extend((CODE_PAGE..addr).map(|_| 0u8));
+        memory.extend(code.iter().map(|x| *x));
+        (CODE_PAGE, memory)
+    };
 
     // Get the ELF file's data
     let data_header: SectionHeader = file
@@ -62,10 +68,13 @@ pub fn main() {
     if let Some(compression_header) = compression_header {
         panic!("{:?}", compression_header);
     }
-    let initial_data_memory = (
-        data_header.sh_addr as u32,
-        (data).iter().map(|x| *x).collect(),
-    );
+    let initial_data_memory = {
+        let mut memory = Vec::with_capacity(1 << 16);
+        let addr = data_header.sh_addr as u32;
+        memory.extend((DATA_PAGE..addr).map(|_| 0u8));
+        memory.extend(code.iter().map(|x| *x));
+        (DATA_PAGE, memory)
+    };
 
     /*
     for (i, word) in code.chunks(4).enumerate() {

@@ -184,9 +184,8 @@ pub fn prove(
             .open(path)
             .unwrap();
         let mut w = BufWriter::new(file);
-        let (addr, initial_memory) = &witness.initial_memory[0]; {
+        let (addr, initial_memory) = &witness.initial_memory[0];
             w.write_all(initial_memory.as_slice()).unwrap();
-        }
         println!("Done.");
     }
 
@@ -202,9 +201,8 @@ pub fn prove(
             .open(path)
             .unwrap();
         let mut w = BufWriter::new(file);
-        let (addr, initial_memory) = &witness.initial_memory[1]; {
+        let (addr, initial_memory) = &witness.initial_memory[1];
             w.write_all(initial_memory.as_slice()).unwrap();
-        }
         println!("Done.");
     }
 
@@ -220,9 +218,8 @@ pub fn prove(
             .open(path)
             .unwrap();
         let mut w = BufWriter::new(file);
-        let (addr, final_memory) = &witness.final_memory[0]; {
+        let (addr, final_memory) = &witness.final_memory[0];
             w.write_all(final_memory.as_slice()).unwrap();
-        }
         println!("Done.");
     }
 
@@ -238,9 +235,8 @@ pub fn prove(
             .open(path)
             .unwrap();
         let mut w = BufWriter::new(file);
-        let (addr, final_memory) = &witness.final_memory[1]; {
+        let (addr, final_memory) = &witness.final_memory[1];
             w.write_all(final_memory.as_slice()).unwrap();
-        }
         println!("Done.");
     }
 

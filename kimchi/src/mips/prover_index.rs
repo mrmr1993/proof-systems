@@ -7,6 +7,7 @@ use crate::curve::KimchiCurve;
 use crate::mips::{
     columns::{Column, FixedColumns},
     constraints,
+    witness::{CODE_PAGE, DATA_PAGE},
 };
 use ark_poly::{EvaluationDomain, Evaluations, Radix2EvaluationDomain as D};
 use poly_commitment::{commitment::PolyComm, srs::SRS};
@@ -36,11 +37,7 @@ pub fn make_sparse(x: u64) -> u64 {
 }
 
 impl<G: KimchiCurve> ProverIndex<G> {
-    pub fn create(
-        srs: Arc<SRS<G>>,
-        domain: EvaluationDomains<G::ScalarField>,
-        memory_offsets: Vec<u32>,
-    ) -> Self {
+    pub fn create(srs: Arc<SRS<G>>, domain: EvaluationDomains<G::ScalarField>) -> Self {
         let fixed_columns = {
             let counter = {
                 let evals = (0..domain.d1.size())
@@ -79,7 +76,7 @@ impl<G: KimchiCurve> ProverIndex<G> {
         ProverIndex {
             srs,
             domain,
-            constraints: constraints::constraints(memory_offsets),
+            constraints: constraints::constraints(vec![CODE_PAGE, DATA_PAGE]),
             fixed_columns,
             fixed_columns_commitments,
             vanishes_on_last_row,

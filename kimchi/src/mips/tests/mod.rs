@@ -27,9 +27,7 @@ fn test_mips() {
     srs.add_lagrange_basis(domain.d1);
     let srs = Arc::new(srs);
 
-    let memory_offsets = vec![0u32];
-
-    let prover_index = ProverIndex::create(srs, domain, memory_offsets);
+    let prover_index = ProverIndex::create(srs, domain);
     println!(
         "- time to create prover index: {:?}s",
         start.elapsed().as_secs()
@@ -54,7 +52,7 @@ fn test_mips() {
         domain_size,
         0u32,
         (0u32, initial_memory),
-        (0x400000u32, initial_memory),
+        (0x400000u32, vec![0u8; domain_size]),
     );
 
     println!(

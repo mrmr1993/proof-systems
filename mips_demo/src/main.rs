@@ -147,11 +147,7 @@ pub fn prove(
     srs.add_lagrange_basis(domain.d1);
     let srs = Arc::new(srs);
 
-    let prover_index = ProverIndex::create(
-        srs,
-        domain,
-        vec![initial_program_memory.0, initial_data_memory.0],
-    );
+    let prover_index = ProverIndex::create(srs, domain);
     println!(
         "- time to create prover index: {:?}ms",
         start.elapsed().as_millis()

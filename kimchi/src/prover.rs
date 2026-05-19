@@ -1399,6 +1399,15 @@ where
 
             //~~ * the lookup selectors
 
+            // Lookup selectors. The blinder PolyComm passed to the IPA driver
+            // must have the same number of chunks as the VK commitment for the
+            // corresponding selector — `combine_polys` walks the *blinders* and
+            // advances `polyscale_to_i` once per blinder chunk, so anything
+            // short of `num_chunks` here causes the verifier (which iterates
+            // the actual `num_chunks`-long VK commitment) to consume more
+            // powers of polyscale than the prover. Using `non_hiding(1)` was a
+            // pre-multi-chunk legacy that silently desynchronises the IPA at
+            // `num_chunks > 1`.
             if let Some(runtime_lookup_table_selector) = &lcs.runtime_selector {
                 polynomials.push((
                     evaluations_form(runtime_lookup_table_selector),

@@ -12,6 +12,28 @@ use serde_with::serde_as;
 
 use super::polynomials::permutation::permutation_vanishing_polynomial;
 
+/// The points of `domain` (`g^0, g^1, …`), computed in parallel. Each chunk
+/// seeds its first power with a single exponentiation and then walks a running
+/// product, so the work is `O(n)` multiplications spread across the cores with
+/// only one `pow` per chunk of overhead. For domains smaller than the chunk
+/// size this is a single sequential chunk, so the parallelism never dominates.
+fn domain_points<F: FftField>(domain: D<F>) -> Vec<F> {
+    const CHUNK: usize = 1 << 14;
+    let gen = domain.group_gen;
+    let mut points = vec![F::one(); domain.size()];
+    points
+        .par_chunks_mut(CHUNK)
+        .enumerate()
+        .for_each(|(chunk_idx, chunk)| {
+            let mut x = gen.pow([(chunk_idx * CHUNK) as u64]);
+            for slot in chunk.iter_mut() {
+                *slot = x;
+                x *= gen;
+            }
+        });
+    points
+}
+
 /// Evaluate the polynomial `Π (x - root)` (given by its roots) at every point of
 /// `d8`, where `x_d8` holds the d8 domain points. For the low-degree vanishing
 /// polynomials this is far cheaper than padding to 8n coefficients and running
@@ -50,7 +72,7 @@ impl<F: FftField> DomainConstantEvaluations<F> {
 
         // `x` over d8 is just the d8 domain points (g8^row); recover them from
         // the domain rather than through an FFT.
-        let x_d8: Vec<F> = domain.d8.elements().collect();
+        let x_d8 = domain_points(domain.d8);
 
         // Vanishes on the last (zk_rows + 1) rows: roots omega^{n-(zk_rows+1)} ..
         // omega^{n-1}.

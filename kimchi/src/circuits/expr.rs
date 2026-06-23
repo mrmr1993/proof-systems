@@ -1183,6 +1183,27 @@ impl<'a, F: FftField> EvalResult<'a, F> {
         }
     }
 
+    /// Apply `op` in place to the non-d1 rows of an evaluation over `domain`,
+    /// leaving the d1 rows untouched: they are already zero from the skipping
+    /// materialization (`init_`) and every constraint vanishes on them, so there
+    /// is no need to compute the in-place combination there. This is the
+    /// in-place analogue of the skip in `init_`.
+    fn update_non_d1<H: Sync + Send + Fn(usize, &mut F)>(
+        mut evals: Evaluations<F, D<F>>,
+        domain: Domain,
+        op: H,
+    ) -> Evaluations<F, D<F>> {
+        let stride = domain as usize;
+        let skip_d1 = stride > 1;
+        let mask = stride - 1;
+        evals.evals.par_iter_mut().enumerate().for_each(|(i, e)| {
+            if !skip_d1 || (i & mask) != 0 {
+                op(i, e);
+            }
+        });
+        evals
+    }
+
     /// Call the internal function `init_` and return the computed evaluation as
     /// a value `Evals`.
     fn init<G: Sync + Send + Fn(usize) -> F>(res_domain: (Domain, D<F>), g: G) -> Self {
@@ -1196,10 +1217,11 @@ impl<'a, F: FftField> EvalResult<'a, F> {
         use EvalResult::*;
         match (self, other) {
             (Constant(x), Constant(y)) => Constant(x + y),
-            (Evals { domain, mut evals }, Constant(x))
-            | (Constant(x), Evals { domain, mut evals }) => {
-                evals.evals.par_iter_mut().for_each(|e| *e += x);
-                Evals { domain, evals }
+            (Evals { domain, evals }, Constant(x)) | (Constant(x), Evals { domain, evals }) => {
+                Evals {
+                    domain,
+                    evals: Self::update_non_d1(evals, domain, |_, e| *e += x),
+                }
             }
             (
                 SubEvals {
@@ -1217,7 +1239,6 @@ impl<'a, F: FftField> EvalResult<'a, F> {
                     shift,
                 },
             ) => {
-                let n = res_domain.1.size();
                 let scale = (domain as usize) / (res_domain.0 as usize);
                 assert!(
                     scale != 0,
@@ -1225,21 +1246,14 @@ impl<'a, F: FftField> EvalResult<'a, F> {
                 column_domain and the evaluation domain of the
                 witnesses are the same"
                 );
-                let v: Vec<_> = (0..n)
-                    .into_par_iter()
-                    .map(|i| {
-                        x + evals.evals[(scale * i + (domain as usize) * shift) % evals.evals.len()]
-                    })
-                    .collect();
-                Evals {
-                    domain: res_domain.0,
-                    evals: Evaluations::<F, D<F>>::from_vec_and_domain(v, res_domain.1),
-                }
+                EvalResult::init(res_domain, |i| {
+                    x + evals.evals[(scale * i + (domain as usize) * shift) % evals.evals.len()]
+                })
             }
             (
                 Evals {
                     domain: d1,
-                    evals: mut es1,
+                    evals: es1,
                 },
                 Evals {
                     domain: d2,
@@ -1247,10 +1261,9 @@ impl<'a, F: FftField> EvalResult<'a, F> {
                 },
             ) => {
                 assert_eq!(d1, d2);
-                es1 += &es2;
                 Evals {
                     domain: d1,
-                    evals: es1,
+                    evals: Self::update_non_d1(es1, d1, |i, e| *e += es2.evals[i]),
                 }
             }
             (
@@ -1261,13 +1274,13 @@ impl<'a, F: FftField> EvalResult<'a, F> {
                 },
                 Evals {
                     domain: d,
-                    mut evals,
+                    evals,
                 },
             )
             | (
                 Evals {
                     domain: d,
-                    mut evals,
+                    evals,
                 },
                 SubEvals {
                     domain: d_sub,
@@ -1282,10 +1295,12 @@ impl<'a, F: FftField> EvalResult<'a, F> {
                 column_domain and the evaluation domain of the
                 witnesses are the same"
                 );
-                evals.evals.par_iter_mut().enumerate().for_each(|(i, e)| {
-                    *e += es_sub.evals[(scale * i + (d_sub as usize) * s) % es_sub.evals.len()];
-                });
-                Evals { evals, domain: d }
+                Evals {
+                    domain: d,
+                    evals: Self::update_non_d1(evals, d, |i, e| {
+                        *e += es_sub.evals[(scale * i + (d_sub as usize) * s) % es_sub.evals.len()]
+                    }),
+                }
             }
             (
                 SubEvals {
@@ -1313,19 +1328,10 @@ impl<'a, F: FftField> EvalResult<'a, F> {
                 column_domain and the evaluation domain of the
                 witnesses are the same"
                 );
-                let n = res_domain.1.size();
-                let v: Vec<_> = (0..n)
-                    .into_par_iter()
-                    .map(|i| {
-                        es1.evals[(scale1 * i + (d1 as usize) * s1) % es1.evals.len()]
-                            + es2.evals[(scale2 * i + (d2 as usize) * s2) % es2.evals.len()]
-                    })
-                    .collect();
-
-                Evals {
-                    domain: res_domain.0,
-                    evals: Evaluations::<F, D<F>>::from_vec_and_domain(v, res_domain.1),
-                }
+                EvalResult::init(res_domain, |i| {
+                    es1.evals[(scale1 * i + (d1 as usize) * s1) % es1.evals.len()]
+                        + es2.evals[(scale2 * i + (d2 as usize) * s2) % es2.evals.len()]
+                })
             }
         }
     }
@@ -1334,14 +1340,14 @@ impl<'a, F: FftField> EvalResult<'a, F> {
         use EvalResult::*;
         match (self, other) {
             (Constant(x), Constant(y)) => Constant(x - y),
-            (Evals { domain, mut evals }, Constant(x)) => {
-                evals.evals.par_iter_mut().for_each(|e| *e -= x);
-                Evals { domain, evals }
-            }
-            (Constant(x), Evals { domain, mut evals }) => {
-                evals.evals.par_iter_mut().for_each(|e| *e = x - *e);
-                Evals { domain, evals }
-            }
+            (Evals { domain, evals }, Constant(x)) => Evals {
+                domain,
+                evals: Self::update_non_d1(evals, domain, |_, e| *e -= x),
+            },
+            (Constant(x), Evals { domain, evals }) => Evals {
+                domain,
+                evals: Self::update_non_d1(evals, domain, |_, e| *e = x - *e),
+            },
             (
                 SubEvals {
                     evals,
@@ -1384,7 +1390,7 @@ impl<'a, F: FftField> EvalResult<'a, F> {
             (
                 Evals {
                     domain: d1,
-                    evals: mut es1,
+                    evals: es1,
                 },
                 Evals {
                     domain: d2,
@@ -1392,10 +1398,9 @@ impl<'a, F: FftField> EvalResult<'a, F> {
                 },
             ) => {
                 assert_eq!(d1, d2);
-                es1 -= &es2;
                 Evals {
                     domain: d1,
-                    evals: es1,
+                    evals: Self::update_non_d1(es1, d1, |i, e| *e -= es2.evals[i]),
                 }
             }
             (
@@ -1406,7 +1411,7 @@ impl<'a, F: FftField> EvalResult<'a, F> {
                 },
                 Evals {
                     domain: d,
-                    mut evals,
+                    evals,
                 },
             ) => {
                 let scale = (d_sub as usize) / (d as usize);
@@ -1416,16 +1421,18 @@ impl<'a, F: FftField> EvalResult<'a, F> {
                 column_domain and the evaluation domain of the
                 witnesses are the same"
                 );
-
-                evals.evals.par_iter_mut().enumerate().for_each(|(i, e)| {
-                    *e = es_sub.evals[(scale * i + (d_sub as usize) * s) % es_sub.evals.len()] - *e;
-                });
-                Evals { evals, domain: d }
+                Evals {
+                    domain: d,
+                    evals: Self::update_non_d1(evals, d, |i, e| {
+                        *e = es_sub.evals[(scale * i + (d_sub as usize) * s) % es_sub.evals.len()]
+                            - *e
+                    }),
+                }
             }
             (
                 Evals {
                     domain: d,
-                    mut evals,
+                    evals,
                 },
                 SubEvals {
                     domain: d_sub,
@@ -1440,10 +1447,12 @@ impl<'a, F: FftField> EvalResult<'a, F> {
                 column_domain and the evaluation domain of the
                 witnesses are the same"
                 );
-                evals.evals.par_iter_mut().enumerate().for_each(|(i, e)| {
-                    *e -= es_sub.evals[(scale * i + (d_sub as usize) * s) % es_sub.evals.len()];
-                });
-                Evals { evals, domain: d }
+                Evals {
+                    domain: d,
+                    evals: Self::update_non_d1(evals, d, |i, e| {
+                        *e -= es_sub.evals[(scale * i + (d_sub as usize) * s) % es_sub.evals.len()]
+                    }),
+                }
             }
             (
                 SubEvals {
@@ -1526,10 +1535,11 @@ impl<'a, F: FftField> EvalResult<'a, F> {
         use EvalResult::*;
         match (self, other) {
             (Constant(x), Constant(y)) => Constant(x * y),
-            (Evals { domain, mut evals }, Constant(x))
-            | (Constant(x), Evals { domain, mut evals }) => {
-                evals.evals.par_iter_mut().for_each(|e| *e *= x);
-                Evals { domain, evals }
+            (Evals { domain, evals }, Constant(x)) | (Constant(x), Evals { domain, evals }) => {
+                Evals {
+                    domain,
+                    evals: Self::update_non_d1(evals, domain, |_, e| *e *= x),
+                }
             }
             (
                 SubEvals {
@@ -1561,7 +1571,7 @@ impl<'a, F: FftField> EvalResult<'a, F> {
             (
                 Evals {
                     domain: d1,
-                    evals: mut es1,
+                    evals: es1,
                 },
                 Evals {
                     domain: d2,
@@ -1569,10 +1579,9 @@ impl<'a, F: FftField> EvalResult<'a, F> {
                 },
             ) => {
                 assert_eq!(d1, d2);
-                es1 *= &es2;
                 Evals {
                     domain: d1,
-                    evals: es1,
+                    evals: Self::update_non_d1(es1, d1, |i, e| *e *= es2.evals[i]),
                 }
             }
             (
@@ -1583,13 +1592,13 @@ impl<'a, F: FftField> EvalResult<'a, F> {
                 },
                 Evals {
                     domain: d,
-                    mut evals,
+                    evals,
                 },
             )
             | (
                 Evals {
                     domain: d,
-                    mut evals,
+                    evals,
                 },
                 SubEvals {
                     domain: d_sub,
@@ -1604,11 +1613,12 @@ impl<'a, F: FftField> EvalResult<'a, F> {
                 column_domainand the evaluation domain of the
                 witnesses are the same"
                 );
-
-                evals.evals.par_iter_mut().enumerate().for_each(|(i, e)| {
-                    *e *= es_sub.evals[(scale * i + (d_sub as usize) * s) % es_sub.evals.len()];
-                });
-                Evals { evals, domain: d }
+                Evals {
+                    domain: d,
+                    evals: Self::update_non_d1(evals, d, |i, e| {
+                        *e *= es_sub.evals[(scale * i + (d_sub as usize) * s) % es_sub.evals.len()]
+                    }),
+                }
             }
             (
                 SubEvals {

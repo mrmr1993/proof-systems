@@ -192,6 +192,22 @@ where
     }
 }
 
+/// Multiply `l` by `r` element-wise over d8, skipping the d1 rows (indices that
+/// are multiples of 8). The permutation contribution vanishes on all of d1, so
+/// those rows are left at the zero the skipping term construction produced --
+/// only the non-d1 products need computing.
+fn mul_assign_skipping_d1<F: FftField>(l: &mut Evaluations<F, D<F>>, r: &Evaluations<F, D<F>>) {
+    l.evals
+        .par_iter_mut()
+        .enumerate()
+        .zip(r.evals.par_iter())
+        .for_each(|((i, a), b)| {
+            if i & 7 != 0 {
+                *a *= b;
+            }
+        });
+}
+
 impl<const FULL_ROUNDS: usize, F, G, Srs> ProverIndex<FULL_ROUNDS, G, Srs>
 where
     F: PrimeField,
@@ -274,12 +290,21 @@ where
                         .evals
                         .par_iter()
                         .zip(self.cs.precomputations().poly_x_d1.evals.par_iter())
-                        .map(|(w, x)| *w + gamma + beta_shift * x)
+                        .enumerate()
+                        .map(|(i, (w, x))| {
+                            // Skip the d1 rows (multiples of 8): the permutation
+                            // vanishes there, so the products land at zero.
+                            if i & 7 == 0 {
+                                F::zero()
+                            } else {
+                                *w + gamma + beta_shift * x
+                            }
+                        })
                         .collect();
                     Evaluations::<F, D<F>>::from_vec_and_domain(evals, self.cs.domain.d8)
                 })
                 .reduce_with(|mut l, r| {
-                    l *= &r;
+                    mul_assign_skipping_d1(&mut l, &r);
                     l
                 })
                 .unwrap()
@@ -306,12 +331,21 @@ where
                         .evals
                         .par_iter()
                         .zip(sigma.evals.par_iter())
-                        .map(|(w, s)| *w + gamma + beta * s)
+                        .enumerate()
+                        .map(|(i, (w, s))| {
+                            // Skip the d1 rows (multiples of 8): the permutation
+                            // vanishes there, so the products land at zero.
+                            if i & 7 == 0 {
+                                F::zero()
+                            } else {
+                                *w + gamma + beta * s
+                            }
+                        })
                         .collect();
                     Evaluations::<F, D<F>>::from_vec_and_domain(evals, self.cs.domain.d8)
                 })
                 .reduce_with(|mut l, r| {
-                    l *= &r;
+                    mul_assign_skipping_d1(&mut l, &r);
                     l
                 })
                 .unwrap()

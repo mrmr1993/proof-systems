@@ -2121,6 +2121,12 @@ impl<F: FftField, Column: Copy> Expr<F, Column> {
         // lanes `st[s*B .. s*B + B]`.
         const B: usize = 8;
         let chunk = 1usize << 14; // multiple of B
+                                  // 7n packing: for a d8 result every 8th row is a d1 row (a known zero for
+                                  // the quotient), and since the chunk and block sizes are multiples of 8,
+                                  // those rows are exactly lane 0 of every block. Start the lane loops at 1
+                                  // to skip them -- 1/8 fewer column reads and bytecode steps. (d4 keeps
+                                  // all lanes; its d1 handling is the public-row patch in the prover.)
+        let lstart = if (d as usize) == 8 { 1usize } else { 0usize };
         let mut out = vec![F::zero(); n];
         out.par_chunks_mut(chunk)
             .enumerate()
@@ -2142,7 +2148,7 @@ impl<F: FftField, Column: Copy> Expr<F, Column> {
                                 FOp::Lit(i) => {
                                     let v = *lits.get_unchecked(*i);
                                     let d0 = sp * B;
-                                    for l in 0..blk {
+                                    for l in lstart..blk {
                                         *st.get_unchecked_mut(d0 + l) = v;
                                     }
                                     sp += 1;
@@ -2150,7 +2156,7 @@ impl<F: FftField, Column: Copy> Expr<F, Column> {
                                 FOp::Col(i) => {
                                     let c = cols.get_unchecked(*i);
                                     let d0 = sp * B;
-                                    for l in 0..blk {
+                                    for l in lstart..blk {
                                         let raw = c.scale * (idx0 + l) + c.offset;
                                         let j = if raw < c.len { raw } else { raw % c.len };
                                         *st.get_unchecked_mut(d0 + l) = *c.evals.get_unchecked(j);
@@ -2161,7 +2167,7 @@ impl<F: FftField, Column: Copy> Expr<F, Column> {
                                     // Materialised over `d`, indexed directly by row.
                                     let a = aux.get_unchecked(*i);
                                     let d0 = sp * B;
-                                    for l in 0..blk {
+                                    for l in lstart..blk {
                                         *st.get_unchecked_mut(d0 + l) = *a.get_unchecked(idx0 + l);
                                     }
                                     sp += 1;
@@ -2169,7 +2175,7 @@ impl<F: FftField, Column: Copy> Expr<F, Column> {
                                 FOp::Add => {
                                     sp -= 1;
                                     let (t0, s0) = ((sp - 1) * B, sp * B);
-                                    for l in 0..blk {
+                                    for l in lstart..blk {
                                         let v = *st.get_unchecked(s0 + l);
                                         *st.get_unchecked_mut(t0 + l) += v;
                                     }
@@ -2177,7 +2183,7 @@ impl<F: FftField, Column: Copy> Expr<F, Column> {
                                 FOp::Sub => {
                                     sp -= 1;
                                     let (t0, s0) = ((sp - 1) * B, sp * B);
-                                    for l in 0..blk {
+                                    for l in lstart..blk {
                                         let v = *st.get_unchecked(s0 + l);
                                         *st.get_unchecked_mut(t0 + l) -= v;
                                     }
@@ -2185,46 +2191,46 @@ impl<F: FftField, Column: Copy> Expr<F, Column> {
                                 FOp::Mul => {
                                     sp -= 1;
                                     let (t0, s0) = ((sp - 1) * B, sp * B);
-                                    for l in 0..blk {
+                                    for l in lstart..blk {
                                         let v = *st.get_unchecked(s0 + l);
                                         *st.get_unchecked_mut(t0 + l) *= v;
                                     }
                                 }
                                 FOp::Square => {
                                     let t0 = (sp - 1) * B;
-                                    for l in 0..blk {
+                                    for l in lstart..blk {
                                         st.get_unchecked_mut(t0 + l).square_in_place();
                                     }
                                 }
                                 FOp::Double => {
                                     let t0 = (sp - 1) * B;
-                                    for l in 0..blk {
+                                    for l in lstart..blk {
                                         st.get_unchecked_mut(t0 + l).double_in_place();
                                     }
                                 }
                                 FOp::Pow(p) => {
                                     let t0 = (sp - 1) * B;
-                                    for l in 0..blk {
+                                    for l in lstart..blk {
                                         let v = st.get_unchecked(t0 + l).pow([*p]);
                                         *st.get_unchecked_mut(t0 + l) = v;
                                     }
                                 }
                                 FOp::StoreReg(r) => {
                                     let (d0, s0) = ((regbase + *r) * B, (sp - 1) * B);
-                                    for l in 0..blk {
+                                    for l in lstart..blk {
                                         *st.get_unchecked_mut(d0 + l) = *st.get_unchecked(s0 + l);
                                     }
                                 }
                                 FOp::LoadReg(r) => {
                                     let (d0, s0) = (sp * B, (regbase + *r) * B);
-                                    for l in 0..blk {
+                                    for l in lstart..blk {
                                         *st.get_unchecked_mut(d0 + l) = *st.get_unchecked(s0 + l);
                                     }
                                     sp += 1;
                                 }
                             }
                         }
-                        for l in 0..blk {
+                        for l in lstart..blk {
                             *slots.get_unchecked_mut(off + l) = *st.get_unchecked(l);
                         }
                     }

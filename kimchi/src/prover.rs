@@ -547,8 +547,17 @@ where
                 Evaluations::from_vec_and_domain(evals, index.cs.domain.d8)
             };
 
-            // TODO: This interpolation is avoidable.
-            let joint_lookup_table = joint_lookup_table_d8.interpolate_by_ref();
+            // Recover the d1 coefficient form of the joint table. It has degree
+            // < d1, and d1 is a subgroup of d8 (d8 = 8*d1, Radix2), so its d1
+            // evaluations are exactly every 8th d8 evaluation; subsampling plus a
+            // d1-sized iFFT recovers the coefficients exactly, avoiding the full
+            // d8 iFFT this interpolation used to perform.
+            let joint_lookup_table = {
+                let d1_evals: Vec<G::ScalarField> = (0..d1_size)
+                    .map(|j| joint_lookup_table_d8.evals[8 * j])
+                    .collect();
+                Evaluations::from_vec_and_domain(d1_evals, index.cs.domain.d1).interpolate()
+            };
 
             //~~ * Compute the sorted evaluations.
             // TODO: Once we switch to committing using lagrange commitments,

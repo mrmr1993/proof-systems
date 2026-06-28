@@ -186,7 +186,20 @@ where
         RNG: RngCore + CryptoRng,
         VerifierIndex<FULL_ROUNDS, G, OpeningProof::SRS>: Clone,
     {
+        fn __ram_mark(label: &str) {
+            if std::env::var("RAM_PROFILE").is_ok() {
+                if let Ok(st) = std::fs::read_to_string("/proc/self/status") {
+                    for l in st.lines() {
+                        if let Some(v) = l.strip_prefix("RssAnon:") {
+                            eprintln!("[ram] pid{} {} {}", std::process::id(), label, v.trim());
+                            return;
+                        }
+                    }
+                }
+            }
+        }
         internal_tracing::checkpoint!(internal_traces; create_recursive);
+        __ram_mark("entry");
         let d1_size = index.cs.domain.d1.size();
 
         let (_, endo_r) = G::endos();
@@ -299,6 +312,7 @@ where
         //~    Note: since the witness is in evaluation form,
         //~    we can use the `commit_evaluation` optimization.
         internal_tracing::checkpoint!(internal_traces; commit_to_witness_columns);
+        __ram_mark("wit_committed");
         // generate blinders if not given externally
         let blinders_final: Vec<PolyComm<G::ScalarField>> = match blinders {
             None => (0..COLUMNS)
@@ -484,20 +498,19 @@ where
 
             //~~ * Compute the lookup table values as the combination of the lookup table entries.
             let joint_lookup_table_d8 = {
-                let mut evals = Vec::with_capacity(d1_size);
+                let evals = (0..(d1_size * 8))
+                    .into_par_iter()
+                    .map(|idx| {
+                        let table_id = match lcs.table_ids8.as_ref() {
+                            Some(table_ids8) => table_ids8.evals[idx],
+                            None =>
+                            // If there is no `table_ids8` in the constraint system,
+                            // every table ID is identically 0.
+                            {
+                                G::ScalarField::zero()
+                            }
+                        };
 
-                for idx in 0..(d1_size * 8) {
-                    let table_id = match lcs.table_ids8.as_ref() {
-                        Some(table_ids8) => table_ids8.evals[idx],
-                        None =>
-                        // If there is no `table_ids8` in the constraint system,
-                        // every table ID is identically 0.
-                        {
-                            G::ScalarField::zero()
-                        }
-                    };
-
-                    let combined_entry =
                         if !lcs.configuration.lookup_info.features.uses_runtime_tables {
                             let table_row = lcs.lookup_table8.iter().map(|e| &e.evals[idx]);
 
@@ -509,15 +522,17 @@ where
                             )
                         } else {
                             // if runtime table are used, the second row is modified
-                            let second_col = lookup_context.runtime_second_col_d8.as_ref().unwrap();
+                            let second_col =
+                                lookup_context.runtime_second_col_d8.as_ref().unwrap();
 
-                            let table_row = lcs.lookup_table8.iter().enumerate().map(|(col, e)| {
-                                if col == 1 {
-                                    &second_col.evals[idx]
-                                } else {
-                                    &e.evals[idx]
-                                }
-                            });
+                            let table_row =
+                                lcs.lookup_table8.iter().enumerate().map(|(col, e)| {
+                                    if col == 1 {
+                                        &second_col.evals[idx]
+                                    } else {
+                                        &e.evals[idx]
+                                    }
+                                });
 
                             combine_table_entry(
                                 &joint_combiner,
@@ -525,9 +540,9 @@ where
                                 table_row,
                                 &table_id,
                             )
-                        };
-                    evals.push(combined_entry);
-                }
+                        }
+                    })
+                    .collect();
 
                 Evaluations::from_vec_and_domain(evals, index.cs.domain.d8)
             };
@@ -578,9 +593,10 @@ where
 
             // precompute different forms of the sorted polynomials for later
             // TODO: We can avoid storing these coefficients.
-            let sorted_coeffs: Vec<_> = sorted.iter().map(|e| e.clone().interpolate()).collect();
+            let sorted_coeffs: Vec<_> =
+                sorted.par_iter().map(|e| e.clone().interpolate()).collect();
             let sorted8: Vec<_> = sorted_coeffs
-                .iter()
+                .par_iter()
                 .map(|v| v.evaluate_over_domain_by_ref(index.cs.domain.d8))
                 .collect();
 
@@ -643,6 +659,7 @@ where
 
         //~ 1. Compute the permutation aggregation polynomial $z$.
         internal_tracing::checkpoint!(internal_traces; z_permutation_aggregation_polynomial);
+        __ram_mark("z_perm");
         let z_poly = index.perm_aggreg(&witness, &beta, &gamma, rng)?;
 
         //~ 1. Commit (hiding) to the permutation aggregation polynomial $z$.
@@ -754,13 +771,13 @@ where
             }
         };
 
-        let mut cache = expr::Cache::default();
-
         internal_tracing::checkpoint!(internal_traces; compute_quotient_poly);
+        __ram_mark("pre_quotient");
 
         let quotient_poly = {
             // generic
             let mut t4 = {
+                let mut cache = expr::Cache::default();
                 let generic_constraint =
                     generic::Generic::combined_constraints(&all_alphas, &mut cache);
                 let generic4 = generic_constraint.evaluations(&env);
@@ -825,6 +842,7 @@ where
                 .into_iter()
                 .filter_map(|(gate, is_enabled)| if is_enabled { Some(gate) } else { None })
                 {
+                    let mut cache = expr::Cache::default();
                     let constraint = gate.combined_constraints(&all_alphas, &mut cache);
                     let eval = constraint.evaluations(&env);
                     if eval.domain().size == t4.domain().size {
@@ -1005,6 +1023,7 @@ where
             };
 
         internal_tracing::checkpoint!(internal_traces; chunk_eval_zeta_omega_poly);
+        __ram_mark("post_quotient");
         let chunked_evals = ProofEvaluations::<PointEvaluations<Vec<G::ScalarField>>> {
             public: {
                 let chunked = public_poly.to_chunked_polynomial(num_chunks, index.max_poly_size);
@@ -1124,6 +1143,7 @@ where
         //~ 1. Compute the ft polynomial.
         //~    This is to implement [Maller's optimization](https://o1-labs.github.io/proof-systems/kimchi/maller_15.html).
         internal_tracing::checkpoint!(internal_traces; compute_ft_poly);
+        __ram_mark("ft");
         let ft: DensePolynomial<G::ScalarField> = {
             let f_chunked = {
                 // TODO: compute the linearization polynomial in evaluation form so
@@ -1143,7 +1163,17 @@ where
                     lin.interpolate()
                 };
 
+                // The constraint environment and the d8 evaluations it borrows
+                // (`lagrange`, the lookup table / sorted / aggregation evals) are
+                // no longer needed -- everything below operates on d1-sized
+                // polynomials. These d8 buffers are the peak-RAM driver, so
+                // freeing them here (rather than at end-of-proof) materially
+                // lowers peak memory.
                 drop(env);
+                drop(lagrange);
+                lookup_context.joint_lookup_table_d8 = None;
+                lookup_context.sorted8 = None;
+                lookup_context.aggreg8 = None;
 
                 // see https://o1-labs.github.io/proof-systems/kimchi/maller_15.html#the-prover-side
                 f.to_chunked_polynomial(num_chunks, index.max_poly_size)
@@ -1437,6 +1467,7 @@ where
 
         //~ 1. Create an aggregated evaluation proof for all of these polynomials at $\zeta$ and $\zeta\omega$ using $u$ and $v$.
         internal_tracing::checkpoint!(internal_traces; create_aggregated_ipa);
+        __ram_mark("pre_ipa_open");
         let proof = OpenProof::open(
             &*index.srs,
             group_map,
@@ -1471,6 +1502,14 @@ where
         };
 
         internal_tracing::checkpoint!(internal_traces; create_recursive_done);
+        __ram_mark("done");
+
+        #[cfg(feature = "internal_tracing")]
+        if std::env::var("KIMCHI_STAGE_TRACE").is_ok() {
+            eprintln!("[stage-trace-begin]");
+            eprint!("{}", internal_traces::take_traces());
+            eprintln!("[stage-trace-end]");
+        }
 
         Ok(proof)
     }

@@ -108,7 +108,7 @@ pub fn caml_pasta_fp_plonk_proof_create(
             None,
             &mut rand::rngs::OsRng,
         )
-        .map_err(|e| ocaml::Error::Error(e.into()))?;
+        .map_err(|e| ocaml::Error::Error(e.into()))?.proof;
         Ok((proof, public_input).into())
     })
 }
@@ -176,7 +176,7 @@ pub fn caml_pasta_fp_plonk_proof_create_and_verify(
             None,
             &mut rand::rngs::OsRng,
         )
-        .map_err(|e| ocaml::Error::Error(e.into()))?;
+        .map_err(|e| ocaml::Error::Error(e.into()))?.proof;
 
         let verifier_index = index.verifier_index();
 
@@ -306,7 +306,7 @@ pub fn caml_pasta_fp_plonk_proof_example_with_lookup(
         None,
         &mut rand::rngs::OsRng,
     )
-    .unwrap();
+    .unwrap().proof;
 
     let caml_prover_proof = (proof, vec![public_input]).into();
 
@@ -472,7 +472,7 @@ pub fn caml_pasta_fp_plonk_proof_example_with_foreign_field_mul(
         None,
         &mut rand::rngs::OsRng,
     )
-    .unwrap();
+    .unwrap().proof;
     (
         CamlPastaFpPlonkIndex(IndexHandle::Owned(Box::new(index))),
         (proof, vec![]).into(),
@@ -544,7 +544,7 @@ pub fn caml_pasta_fp_plonk_proof_example_with_range_check(
         None,
         &mut rand::rngs::OsRng,
     )
-    .unwrap();
+    .unwrap().proof;
     (
         CamlPastaFpPlonkIndex(IndexHandle::Owned(Box::new(index))),
         (proof, vec![]).into(),
@@ -620,7 +620,7 @@ pub fn caml_pasta_fp_plonk_proof_example_with_range_check0(
         None,
         &mut rand::rngs::OsRng,
     )
-    .unwrap();
+    .unwrap().proof;
     (
         CamlPastaFpPlonkIndex(IndexHandle::Owned(Box::new(index))),
         (proof, vec![]).into(),
@@ -749,7 +749,7 @@ pub fn caml_pasta_fp_plonk_proof_example_with_ffadd(
         None,
         &mut rand::rngs::OsRng,
     )
-    .unwrap();
+    .unwrap().proof;
     (
         CamlPastaFpPlonkIndex(IndexHandle::Owned(Box::new(index))),
         public_input.into(),
@@ -842,7 +842,7 @@ pub fn caml_pasta_fp_plonk_proof_example_with_xor(
         None,
         &mut rand::rngs::OsRng,
     )
-    .unwrap();
+    .unwrap().proof;
     (
         CamlPastaFpPlonkIndex(IndexHandle::Owned(Box::new(index))),
         (public_input.0.into(), public_input.1.into()),
@@ -938,7 +938,7 @@ pub fn caml_pasta_fp_plonk_proof_example_with_rot(
         None,
         &mut rand::rngs::OsRng,
     )
-    .unwrap();
+    .unwrap().proof;
     (
         CamlPastaFpPlonkIndex(IndexHandle::Owned(Box::new(index))),
         (public_input.0.into(), public_input.1.into()),

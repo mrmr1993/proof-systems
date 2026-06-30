@@ -170,15 +170,17 @@ pub fn caml_pasta_fp_plonk_proof_create_with_oracles(
 
     runtime.releasing_runtime(|| {
         let group_map = GroupMap::<Fq>::setup();
-        let fat = ProverProof::create_recursive::<EFqSponge, EFrSponge, _>(
-            &group_map,
-            witness,
-            &runtime_tables,
-            index,
-            prev,
-            None,
-            &mut rand::rngs::OsRng,
-        )
+        let fat = crate::with_prove_pool(|| {
+            ProverProof::create_recursive::<EFqSponge, EFrSponge, _>(
+                &group_map,
+                witness,
+                &runtime_tables,
+                index,
+                prev,
+                None,
+                &mut rand::rngs::OsRng,
+            )
+        })
         .map_err(|e| ocaml::Error::Error(e.into()))?;
         let fo = fat.fat_oracles;
         let oracles = CamlOracles {

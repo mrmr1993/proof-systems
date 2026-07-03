@@ -190,20 +190,7 @@ where
         RNG: RngCore + CryptoRng,
         VerifierIndex<FULL_ROUNDS, G, OpeningProof::SRS>: Clone,
     {
-        fn __ram_mark(label: &str) {
-            if std::env::var("RAM_PROFILE").is_ok() {
-                if let Ok(st) = std::fs::read_to_string("/proc/self/status") {
-                    for l in st.lines() {
-                        if let Some(v) = l.strip_prefix("RssAnon:") {
-                            eprintln!("[ram] pid{} {} {}", std::process::id(), label, v.trim());
-                            return;
-                        }
-                    }
-                }
-            }
-        }
         internal_tracing::checkpoint!(internal_traces; create_recursive);
-        __ram_mark("entry");
         let d1_size = index.cs.domain.d1.size();
 
         let (_, endo_r) = G::endos();
@@ -316,7 +303,6 @@ where
         //~    Note: since the witness is in evaluation form,
         //~    we can use the `commit_evaluation` optimization.
         internal_tracing::checkpoint!(internal_traces; commit_to_witness_columns);
-        __ram_mark("wit_committed");
         // generate blinders if not given externally
         let blinders_final: Vec<PolyComm<G::ScalarField>> = match blinders {
             None => (0..COLUMNS)
@@ -673,7 +659,6 @@ where
 
         //~ 1. Compute the permutation aggregation polynomial $z$.
         internal_tracing::checkpoint!(internal_traces; z_permutation_aggregation_polynomial);
-        __ram_mark("z_perm");
         let z_poly = index.perm_aggreg(&witness, &beta, &gamma, rng)?;
 
         //~ 1. Commit (hiding) to the permutation aggregation polynomial $z$.
@@ -786,7 +771,6 @@ where
         };
 
         internal_tracing::checkpoint!(internal_traces; compute_quotient_poly);
-        __ram_mark("pre_quotient");
 
         let quotient_poly = {
             // generic
@@ -1037,7 +1021,6 @@ where
             };
 
         internal_tracing::checkpoint!(internal_traces; chunk_eval_zeta_omega_poly);
-        __ram_mark("post_quotient");
         let chunked_evals = ProofEvaluations::<PointEvaluations<Vec<G::ScalarField>>> {
             public: {
                 let chunked = public_poly.to_chunked_polynomial(num_chunks, index.max_poly_size);
@@ -1157,7 +1140,6 @@ where
         //~ 1. Compute the ft polynomial.
         //~    This is to implement [Maller's optimization](https://o1-labs.github.io/proof-systems/kimchi/maller_15.html).
         internal_tracing::checkpoint!(internal_traces; compute_ft_poly);
-        __ram_mark("ft");
         let ft: DensePolynomial<G::ScalarField> = {
             let f_chunked = {
                 // TODO: compute the linearization polynomial in evaluation form so
@@ -1482,7 +1464,6 @@ where
 
         //~ 1. Create an aggregated evaluation proof for all of these polynomials at $\zeta$ and $\zeta\omega$ using $u$ and $v$.
         internal_tracing::checkpoint!(internal_traces; create_aggregated_ipa);
-        __ram_mark("pre_ipa_open");
         let opening_fat = OpenProof::open(
             &*index.srs,
             group_map,
@@ -1521,7 +1502,6 @@ where
         };
 
         internal_tracing::checkpoint!(internal_traces; create_recursive_done);
-        __ram_mark("done");
 
         #[cfg(feature = "internal_tracing")]
         if std::env::var("KIMCHI_STAGE_TRACE").is_ok() {
